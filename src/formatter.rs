@@ -18,6 +18,7 @@ pub struct Formatter {
     pub include_module: bool,
     /// Whether to include the file and line number
     pub include_location: bool,
+
     /// The format pattern to use
     pub pattern: String,
     /// Custom format function
@@ -36,6 +37,7 @@ impl std::fmt::Debug for Formatter {
             .field("format_fn", &self.format_fn.is_some())
             .finish()
     }
+
 }
 
 impl Formatter {
@@ -47,8 +49,10 @@ impl Formatter {
             include_level: true,
             include_module: true,
             include_location: true,
+
             pattern: "{level} [{file}:{line}] {message} {metadata}".to_string(),
             format_fn: None,
+
         }
     }
 
@@ -326,6 +330,7 @@ mod tests {
             Some(42),
         );
         let formatted = formatter.format(&record);
+
         assert!(!formatted.contains("test_file.rs:42")); // No location
     }
 

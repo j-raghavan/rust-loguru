@@ -19,6 +19,7 @@ impl std::fmt::Debug for DebugWrite {
     }
 }
 
+
 /// A handler that writes log records to the console.
 #[derive(Debug)]
 pub struct ConsoleHandler {
@@ -34,6 +35,7 @@ pub struct ConsoleHandler {
 
 impl ConsoleHandler {
     /// Creates a new console handler that writes to stdout.
+
     pub fn new() -> Self {
         Self::stdout(LogLevel::Info)
     }
