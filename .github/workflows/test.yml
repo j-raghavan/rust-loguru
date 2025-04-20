@@ -16,22 +16,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: [stable, beta, nightly]
+        rust: [stable]
         include:
           - rust: stable
             toolchain: stable
-          - rust: beta
-            toolchain: beta
-          - rust: nightly
-            toolchain: nightly
-            allow_failure: true
+
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@${{ matrix.toolchain }}
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ matrix.toolchain }}
           components: rustfmt, clippy
 
       - name: Cache dependencies

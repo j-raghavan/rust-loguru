@@ -1,5 +1,5 @@
-use crate::record::Record;
 use crate::level::LogLevel;
+use crate::record::Record;
 
 /// Trait defining the interface for log handlers.
 /// Handlers are responsible for processing and outputting log records.
@@ -89,13 +89,7 @@ mod tests {
     #[test]
     fn test_null_handler() {
         let mut handler = NullHandler::new(LogLevel::Info);
-        let record = Record::new(
-            LogLevel::Info,
-            "Test message",
-            "test_module",
-            "test.rs",
-            42,
-        );
+        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
 
         assert!(handler.handle(&record));
         assert_eq!(handler.level(), LogLevel::Info);
@@ -107,4 +101,4 @@ mod tests {
         handler.set_enabled(false);
         assert!(!handler.is_enabled());
     }
-} 
+}
