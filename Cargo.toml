@@ -10,12 +10,22 @@ readme = "README.md"
 
 [dependencies]
 lazy_static = "1.4.0"
-parking_lot = "0.12.1"
+parking_lot = "0.12"
 chrono = "0.4"
 thiserror = "1.0.50"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+colored = "2.0"
+rand = "0.8"
 
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3.8"
+
+[[example]]
+name = "api_usage"
+path = "examples/api_usage.rs"
+
+[[example]]
+name = "advanced_usage"
+path = "examples/advanced_usage.rs"
