@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   pages: write      # Added for GitHub Pages deployment
+  id-token: write   # Required for GitHub Pages deployment
 
 env:
   CARGO_TERM_COLOR: always
@@ -125,7 +126,7 @@ jobs:
         uses: actions/configure-pages@v3
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v2
+        uses: actions/upload-pages-artifact@v3
         with:
           path: ./target/doc
 
