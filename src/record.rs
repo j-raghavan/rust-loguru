@@ -73,25 +73,29 @@ impl Record {
 
     /// Adds structured data to the record's metadata.
     ///
-    /// # Arguments
+    /// The data will be serialized to JSON and stored with the given key.
+    /// Returns a Result indicating success or failure of serialization.
     ///
-    /// * `key` - The metadata key
-    /// * `data` - The structured data to serialize
+    /// # Example
     ///
-    /// # Returns
+    /// ```rust
+    /// use rust_loguru::{Record, LogLevel};
+    /// use serde_json::json;
     ///
-    /// The modified `Record` instance for method chaining.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the data cannot be serialized to JSON.
+    /// let record = Record::new(LogLevel::Info, "test message", "test", "test.rs", 42);
+    /// let result = record.with_structured_data("user", &json!({
+    ///     "id": 123,
+    ///     "name": "test"
+    /// }));
+    /// assert!(result.is_ok());
+    /// ```
     pub fn with_structured_data<T: Serialize>(
         mut self,
-        key: impl Into<String>,
-        data: &T,
+        key: &str,
+        value: &T,
     ) -> Result<Self, serde_json::Error> {
-        let json = serde_json::to_string(data)?;
-        self.metadata.insert(key.into(), json);
+        let json_value = serde_json::to_string(value)?;
+        self.metadata.insert(key.to_string(), json_value);
         Ok(self)
     }
 
@@ -210,5 +214,49 @@ mod tests {
         assert!(display.contains("ERROR"));
         assert!(display.contains("test.rs:42"));
         assert!(display.contains("Test error message"));
+    }
+
+    #[test]
+    fn test_record_metadata_overwrite() {
+        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42)
+            .with_metadata("key", "value1")
+            .with_metadata("key", "value2");
+
+        assert_eq!(record.get_metadata("key"), Some("value2"));
+    }
+
+    #[test]
+    fn test_record_structured_data_error() {
+        // Create a Record instance
+        let record = Record::new(LogLevel::Info, "test message", "test_module", "test.rs", 42);
+
+        // Create a type that will fail to serialize
+        #[derive(Debug)]
+        struct CustomError;
+
+        impl serde::Serialize for CustomError {
+            fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                Err(serde::ser::Error::custom("test error"))
+            }
+        }
+
+        let error_value = CustomError;
+        let result = record.with_structured_data("key", &error_value);
+
+        // Should fail because CustomError always returns an error during serialization
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_record_timestamp() {
+        let before = Utc::now();
+        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
+        let after = Utc::now();
+
+        assert!(record.timestamp() >= before);
+        assert!(record.timestamp() <= after);
     }
 }
