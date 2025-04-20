@@ -68,10 +68,8 @@ impl Logger {
         let mut any_handled = false;
         for handler in &self.handlers {
             let handler = handler.read();
-            if handler.is_enabled() && record.level() >= handler.level() {
-                if handler.handle(record) {
-                    any_handled = true;
-                }
+            if handler.is_enabled() && record.level() >= handler.level() && handler.handle(record) {
+                any_handled = true;
             }
         }
         any_handled
