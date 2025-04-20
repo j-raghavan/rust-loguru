@@ -20,6 +20,7 @@ jobs:
         include:
           - rust: stable
             toolchain: stable
+            allow_failure: false  # Added this line to define allow_failure
 
 
     steps:

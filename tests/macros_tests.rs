@@ -1,104 +1,96 @@
 use parking_lot::RwLock;
 use rust_loguru::{
-    critical, debug, error, info, log_with_metadata, success, trace, warn, LogLevel, Record,
+    critical, debug, error, info, log_with_metadata, success, trace, warn, LogLevel, Logger, Record,
 };
 use std::sync::Arc;
 
 use rust_loguru::handler::NullHandler;
 
+// Add this function to create a fresh logger for each test
+fn create_test_logger(level: LogLevel) -> Logger {
+    let mut logger = Logger::new(level);
+    logger.add_handler(Arc::new(RwLock::new(NullHandler::new(level))));
+    logger
+}
+
 #[test]
 fn test_trace_macro() {
-    let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Trace)));
-    let mut logger = rust_loguru::Logger::new(LogLevel::Trace);
-    logger.add_handler(handler);
+    let logger = create_test_logger(LogLevel::Trace);
     let _ = rust_loguru::init(logger);
 
     let result = trace!("Test trace message");
-    assert!(result);
+    assert!(result, "Trace macro should return true");
 }
 
 #[test]
 fn test_debug_macro() {
-    let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Debug)));
-    let mut logger = rust_loguru::Logger::new(LogLevel::Debug);
-    logger.add_handler(handler);
+    let logger = create_test_logger(LogLevel::Debug);
     let _ = rust_loguru::init(logger);
 
     let result = debug!("Test debug message");
-    assert!(result);
+    assert!(result, "Debug macro should return true");
 }
 
 #[test]
 fn test_info_macro() {
-    let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
-    let mut logger = rust_loguru::Logger::new(LogLevel::Info);
-    logger.add_handler(handler);
+    let logger = create_test_logger(LogLevel::Info);
     let _ = rust_loguru::init(logger);
 
+    // Add debug prints to help diagnose the issue in CI
     let result = info!("Test info message");
-    assert!(result);
+    println!("Info macro result: {}", result);
+
+    assert!(result, "Info macro should return true");
 }
 
 #[test]
 fn test_success_macro() {
-    let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Success)));
-    let mut logger = rust_loguru::Logger::new(LogLevel::Success);
-    logger.add_handler(handler);
+    let logger = create_test_logger(LogLevel::Success);
     let _ = rust_loguru::init(logger);
 
     let result = success!("Test success message");
-    assert!(result);
+    assert!(result, "Success macro should return true");
 }
 
 #[test]
 fn test_warn_macro() {
-    let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Warning)));
-    let mut logger = rust_loguru::Logger::new(LogLevel::Warning);
-    logger.add_handler(handler);
+    let logger = create_test_logger(LogLevel::Warning);
     let _ = rust_loguru::init(logger);
 
     let result = warn!("Test warning message");
-    assert!(result);
+    assert!(result, "Warning macro should return true");
 }
 
 #[test]
 fn test_error_macro() {
-    let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Error)));
-    let mut logger = rust_loguru::Logger::new(LogLevel::Error);
-    logger.add_handler(handler);
+    let logger = create_test_logger(LogLevel::Error);
     let _ = rust_loguru::init(logger);
 
     let result = error!("Test error message");
-    assert!(result);
+    assert!(result, "Error macro should return true");
 }
 
 #[test]
 fn test_critical_macro() {
-    let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Critical)));
-    let mut logger = rust_loguru::Logger::new(LogLevel::Critical);
-    logger.add_handler(handler);
+    let logger = create_test_logger(LogLevel::Critical);
     let _ = rust_loguru::init(logger);
 
     let result = critical!("Test critical message");
-    assert!(result);
+    assert!(result, "Critical macro should return true");
 }
 
 #[test]
 fn test_macro_formatting() {
-    let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
-    let mut logger = rust_loguru::Logger::new(LogLevel::Info);
-    logger.add_handler(handler);
+    let logger = create_test_logger(LogLevel::Info);
     let _ = rust_loguru::init(logger);
 
     let result = info!("Formatted message: {}", 42);
-    assert!(result);
+    assert!(result, "Formatted macro should return true");
 }
 
 #[test]
 fn test_log_with_metadata() {
-    let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
-    let mut logger = rust_loguru::Logger::new(LogLevel::Info);
-    logger.add_handler(handler);
+    let logger = create_test_logger(LogLevel::Info);
     let _ = rust_loguru::init(logger);
 
     let result = log_with_metadata!(
@@ -107,18 +99,16 @@ fn test_log_with_metadata() {
         "key2" => "value2";
         "Test message with metadata"
     );
-    assert!(result);
+    assert!(result, "Metadata logging should return true");
 }
 
 #[test]
 fn test_macro_source_location() {
-    let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
-    let mut logger = rust_loguru::Logger::new(LogLevel::Info);
-    logger.add_handler(handler);
+    let logger = create_test_logger(LogLevel::Info);
     let _ = rust_loguru::init(logger);
 
     let result = info!("Test message");
-    assert!(result);
+    assert!(result, "Info macro should return true");
 
     // Verify that the record contains the correct source location
     let record = Record::new(
@@ -134,34 +124,30 @@ fn test_macro_source_location() {
 
 #[test]
 fn test_macro_level_filtering() {
-    let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Warning)));
-    let mut logger = rust_loguru::Logger::new(LogLevel::Warning);
-    logger.add_handler(handler);
+    let logger = create_test_logger(LogLevel::Warning);
     let _ = rust_loguru::init(logger);
 
     // Info message should be filtered out
     let result = info!("This should be filtered out");
-    assert!(!result);
+    assert!(!result, "Info message should be filtered out");
 
     // Warning message should pass through
     let result = warn!("This should be logged");
-    assert!(result);
+    assert!(result, "Warning message should pass through");
 }
 
 #[test]
 fn test_macro_with_multiple_handlers() {
-    let handler1 = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
-    let handler2 = Arc::new(RwLock::new(NullHandler::new(LogLevel::Warning)));
-    let mut logger = rust_loguru::Logger::new(LogLevel::Info);
-    logger.add_handler(handler1);
-    logger.add_handler(handler2);
+    let mut logger = Logger::new(LogLevel::Info);
+    logger.add_handler(Arc::new(RwLock::new(NullHandler::new(LogLevel::Info))));
+    logger.add_handler(Arc::new(RwLock::new(NullHandler::new(LogLevel::Warning))));
     let _ = rust_loguru::init(logger);
 
     // Info message should be handled by handler1
     let result = info!("Test info message");
-    assert!(result);
+    assert!(result, "Info message should be handled");
 
     // Warning message should be handled by both handlers
     let result = warn!("Test warning message");
-    assert!(result);
+    assert!(result, "Warning message should be handled by both handlers");
 }
