@@ -7,7 +7,7 @@ use crate::level::LogLevel;
 use crate::record::Record;
 
 /// A logger that can handle log records
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Logger {
     /// The log level
     level: LogLevel,
@@ -97,6 +97,8 @@ lazy_static! {
 
 /// Initialize the global logger
 pub fn init(logger: Logger) -> Logger {
+    let mut global = GLOBAL_LOGGER.write();
+    *global = logger.clone();
     logger
 }
 

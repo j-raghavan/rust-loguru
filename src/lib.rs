@@ -6,12 +6,14 @@
 //! - Extensible handler system
 //! - Configurable log formatting
 //! - Support for metadata in log records
+//! - Convenient logging macros
 //!
 //! # Examples
 //!
 //! ```rust,no_run
 //! use rust_loguru::{Logger, LogLevel, Record};
 //! use rust_loguru::handler::NullHandler;
+//! use rust_loguru::{info, debug, error};
 //! use std::sync::Arc;
 //! use parking_lot::RwLock;
 //!
@@ -29,6 +31,11 @@
 //!     Some(42),
 //! );
 //! logger.log(&record);
+//!
+//! // Or use the convenient macros
+//! info!("Hello, world!");
+//! debug!("Debug message: {}", 42);
+//! error!("Error occurred: {}", "something went wrong");
 //! ```
 
 pub mod config;
@@ -36,6 +43,8 @@ pub mod formatter;
 pub mod handler;
 pub mod level;
 pub mod logger;
+#[doc(hidden)]
+pub mod macros;
 pub mod record;
 
 pub use config::{LoggerConfig, LoggerConfigBuilder};
