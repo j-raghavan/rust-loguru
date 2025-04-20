@@ -1,2 +1,266 @@
-# rust-loguru
-Rust-Loguru is a logging library for Rust that aims to provide a simple, intuitive, and powerful logging experience similar to Python's Loguru. It will prioritize ease of use and developer experience while maintaining Rust's performance characteristics.
+# Rust-Loguru
+
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
+[![Crates.io](https://img.shields.io/crates/v/rust-loguru.svg)](https://crates.io/crates/rust-loguru)
+[![Documentation](https://docs.rs/rust-loguru/badge.svg)](https://docs.rs/rust-loguru)
+
+A flexible and efficient logging library for Rust inspired by Python's Loguru. Designed to provide an intuitive, powerful logging experience while maintaining Rust's performance characteristics.
+
+## Features
+
+- **Multiple log levels**: TRACE, DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL
+- **Thread-safe global logger**: Safe to use in multi-threaded applications
+- **Extensible handler system**: Console, file, and custom handlers
+- **Configurable log formatting**: Customize how log messages are displayed
+- **Support for metadata in log records**: Add structured data to log messages
+- **Convenient logging macros**: Easy to use macros for all log levels
+- **File rotation**: Automatic file rotation based on size with retention policies
+- **Colorized output**: Colorful console output for better readability
+- **Source location capture**: Automatically capture file, line, and module information
+
+## Installation
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+rust-loguru = "0.1.0"
+```
+
+## Quick Start
+
+```rust
+use rust_loguru::{info, debug, error, init, LogLevel};
+use rust_loguru::handler::console::ConsoleHandler;
+use std::sync::Arc;
+use parking_lot::RwLock;
+
+fn main() {
+    // Initialize the global logger with a console handler
+    let handler = Arc::new(RwLock::new(
+        ConsoleHandler::stderr(LogLevel::Debug)
+            .with_colors(true)
+    ));
+    
+    let logger = rust_loguru::Logger::new(LogLevel::Debug);
+    init(logger.clone().add_handler(handler));
+    
+    // Log messages at different levels
+    debug!("This is a debug message");
+    info!("This is an info message");
+    error!("This is an error message: {}", "something went wrong");
+    
+    // Log with metadata
+    use rust_loguru::log_with_metadata;
+    log_with_metadata!(LogLevel::Info, "user_id" => "123", "session" => "abc123"; 
+                       "User logged in: {}", "johndoe");
+}
+```
+
+## Core Concepts
+
+### Log Levels
+
+Rust-Loguru supports the following log levels, in order of increasing severity:
+
+- **TRACE**: Very detailed information, typically only useful for debugging specific issues
+- **DEBUG**: Detailed information useful for debugging
+- **INFO**: General information about the application's operation
+- **SUCCESS**: Successful operations (similar to INFO but indicates success)
+- **WARNING**: Potential issues that don't prevent the application from working
+- **ERROR**: Errors that prevent specific operations from working
+- **CRITICAL**: Critical errors that may lead to application failure
+
+### Handlers
+
+Handlers determine where log messages are sent. Rust-Loguru comes with:
+
+- **ConsoleHandler**: Outputs logs to stdout or stderr
+- **FileHandler**: Writes logs to a file with optional rotation
+- **NullHandler**: Discards all logs (useful for testing)
+
+#### Creating a Console Handler
+
+```rust
+use rust_loguru::handler::console::ConsoleHandler;
+use rust_loguru::LogLevel;
+
+// Output to stderr with INFO level
+let handler = ConsoleHandler::stderr(LogLevel::Info)
+    .with_colors(true)
+    .with_pattern("{time} {level} [{file}:{line}] {message}");
+```
+
+#### Creating a File Handler
+
+```rust
+use rust_loguru::handler::file::FileHandler;
+use rust_loguru::LogLevel;
+use std::path::Path;
+
+// Write to a file with rotation at 10MB and keep 5 old files
+let handler = FileHandler::new(Path::new("app.log")).unwrap()
+    .with_rotation(10 * 1024 * 1024)
+    .with_retention(5)
+    .with_colors(false);
+```
+
+### Logging with Metadata
+
+You can add structured metadata to log records:
+
+```rust
+use rust_loguru::{Record, LogLevel, log};
+
+// Using the Record API directly
+let record = Record::new(
+    LogLevel::Info,
+    "User logged in",
+    Some("auth_module".to_string()),
+    Some("auth.rs".to_string()),
+    Some(42),
+)
+.with_metadata("user_id", "123")
+.with_metadata("ip_address", "192.168.1.1");
+
+log(&record);
+
+// Or using the macro
+log_with_metadata!(LogLevel::Info, 
+    "user_id" => "123", 
+    "ip_address" => "192.168.1.1"; 
+    "User logged in: {}", "johndoe"
+);
+```
+
+### Customizing Formatters
+
+Customize how logs are formatted:
+
+```rust
+use rust_loguru::formatter::Formatter;
+
+let formatter = Formatter::new()
+    .with_colors(true)
+    .with_timestamp(true)
+    .with_level(true)
+    .with_module(true)
+    .with_location(true)
+    .with_pattern("{time} {level} [{file}:{line}] {message}");
+```
+
+### Configuration Presets
+
+Use built-in configuration presets:
+
+```rust
+use rust_loguru::LoggerConfig;
+
+// Development configuration with detailed logging
+let config = LoggerConfig::development();
+
+// Production configuration with minimal logging
+let config = LoggerConfig::production();
+```
+
+## Advanced Usage
+
+### Creating Custom Handlers
+
+Implement the `Handler` trait to create custom handlers:
+
+```rust
+use rust_loguru::handler::Handler;
+use rust_loguru::level::LogLevel;
+use rust_loguru::record::Record;
+use rust_loguru::formatter::Formatter;
+
+#[derive(Debug)]
+struct CustomHandler {
+    level: LogLevel,
+    enabled: bool,
+    formatter: Formatter,
+}
+
+impl Handler for CustomHandler {
+    fn level(&self) -> LogLevel {
+        self.level
+    }
+
+    fn set_level(&mut self, level: LogLevel) {
+        self.level = level;
+    }
+
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+
+    fn formatter(&self) -> &Formatter {
+        &self.formatter
+    }
+
+    fn set_formatter(&mut self, formatter: Formatter) {
+        self.formatter = formatter;
+    }
+
+    fn handle(&mut self, record: &Record) -> bool {
+        if !self.enabled || record.level() < self.level {
+            return false;
+        }
+        
+        let formatted = self.formatter.format(record);
+        // Custom handling logic here
+        println!("Custom handler: {}", formatted);
+        true
+    }
+}
+```
+
+### Structured Logging with JSON
+
+Use the structured data capability:
+
+```rust
+use rust_loguru::{Record, LogLevel, log};
+use serde_json::json;
+
+let record = Record::new(
+    LogLevel::Info,
+    "API request completed",
+    Some("api_module".to_string()),
+    Some("api.rs".to_string()),
+    Some(120),
+)
+.with_structured_data("request", &json!({
+    "method": "GET",
+    "path": "/users",
+    "status": 200,
+    "duration_ms": 42
+}))
+.unwrap();
+
+log(&record);
+```
+
+## Performance Considerations
+
+- Log records below the configured level are filtered out early for minimal overhead
+- File handlers use buffered I/O for efficient disk operations
+- Consider using appropriate log levels in production to minimize overhead
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under either of:
+
+- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
