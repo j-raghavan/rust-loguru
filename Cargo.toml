@@ -7,6 +7,7 @@ description = "A flexible and extensible logging library for Rust. Similar funct
 license = "MIT"
 repository = "https://github.com/j-raghavan/rust-loguru"
 readme = "README.md"
+exclude = ["tests/", "specs/", "examples/", "*.log", ".github/", ".gitignore", "Cargo.toml.orig", ".*.json"]
 
 [dependencies]
 lazy_static = "1.4.0"
