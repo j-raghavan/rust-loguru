@@ -17,16 +17,16 @@
 //!
 //! // Create a logger with a handler
 //! let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
-//! let logger = Logger::new(LogLevel::Debug)
-//!     .add_handler(handler);
+//! let mut logger = Logger::new(LogLevel::Debug);
+//! logger.add_handler(handler);
 //!
 //! // Log a message
 //! let record = Record::new(
 //!     LogLevel::Info,
 //!     "Hello, world!",
-//!     "my_module",
-//!     "main.rs",
-//!     42,
+//!     Some("my_module".to_string()),
+//!     Some("main.rs".to_string()),
+//!     Some(42),
 //! );
 //! logger.log(&record);
 //! ```

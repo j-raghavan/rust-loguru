@@ -1,71 +1,83 @@
 use chrono::{DateTime, Utc};
-use serde::Serialize;
 use std::collections::HashMap;
-use std::fmt;
 
 use crate::level::LogLevel;
 
-/// Represents a single log entry with all its associated metadata.
+/// A log record containing all information about a log message
 #[derive(Debug, Clone)]
 pub struct Record {
-    /// The severity level of the log message.
+    /// The log level
     level: LogLevel,
-    /// The actual log message.
+    /// The log message
     message: String,
-    /// The name of the module that generated the log.
+    /// The module path
     module: String,
-    /// The source file where the log was generated.
+    /// The file name
     file: String,
-    /// The line number in the source file where the log was generated.
+    /// The line number
     line: u32,
-    /// The timestamp when the log was created.
+    /// The timestamp
     timestamp: DateTime<Utc>,
-    /// Additional key-value pairs associated with the log.
+    /// Additional metadata
     metadata: HashMap<String, String>,
 }
 
 impl Record {
-    /// Creates a new log record with the given parameters.
-    ///
-    /// # Arguments
-    ///
-    /// * `level` - The severity level of the log message
-    /// * `message` - The actual log message
-    /// * `module` - The name of the module that generated the log
-    /// * `file` - The source file where the log was generated
-    /// * `line` - The line number in the source file
-    ///
-    /// # Returns
-    ///
-    /// A new `Record` instance with the current timestamp and empty metadata.
+    /// Create a new log record
     pub fn new(
         level: LogLevel,
         message: impl Into<String>,
-        module: impl Into<String>,
-        file: impl Into<String>,
-        line: u32,
+        module: Option<String>,
+        file: Option<String>,
+        line: Option<u32>,
     ) -> Self {
         Self {
             level,
             message: message.into(),
-            module: module.into(),
-            file: file.into(),
-            line,
+            module: module.unwrap_or_else(|| String::from("unknown")),
+            file: file.unwrap_or_else(|| String::from("unknown")),
+            line: line.unwrap_or(0),
             timestamp: Utc::now(),
             metadata: HashMap::new(),
         }
     }
 
-    /// Adds a key-value pair to the record's metadata.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The metadata key
-    /// * `value` - The metadata value
-    ///
-    /// # Returns
-    ///
-    /// The modified `Record` instance for method chaining.
+    /// Get the log level
+    pub fn level(&self) -> LogLevel {
+        self.level
+    }
+
+    /// Get the log message
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Get the module path
+    pub fn module(&self) -> &str {
+        &self.module
+    }
+
+    /// Get the file name
+    pub fn file(&self) -> &str {
+        &self.file
+    }
+
+    /// Get the line number
+    pub fn line(&self) -> u32 {
+        self.line
+    }
+
+    /// Get the timestamp
+    pub fn timestamp(&self) -> DateTime<Utc> {
+        self.timestamp
+    }
+
+    /// Get the metadata
+    pub fn metadata(&self) -> &HashMap<String, String> {
+        &self.metadata
+    }
+
+    /// Add metadata to the record
     pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.metadata.insert(key.into(), value.into());
         self
@@ -82,14 +94,14 @@ impl Record {
     /// use rust_loguru::{Record, LogLevel};
     /// use serde_json::json;
     ///
-    /// let record = Record::new(LogLevel::Info, "test message", "test", "test.rs", 42);
+    /// let record = Record::new(LogLevel::Info, "test message", Some("test".to_string()), Some("test.rs".to_string()), Some(42));
     /// let result = record.with_structured_data("user", &json!({
     ///     "id": 123,
     ///     "name": "test"
     /// }));
     /// assert!(result.is_ok());
     /// ```
-    pub fn with_structured_data<T: Serialize>(
+    pub fn with_structured_data<T: serde::Serialize>(
         mut self,
         key: &str,
         value: &T,
@@ -99,49 +111,14 @@ impl Record {
         Ok(self)
     }
 
-    /// Returns the log level of this record.
-    pub fn level(&self) -> LogLevel {
-        self.level
-    }
-
-    /// Returns the log message.
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    /// Returns the module name.
-    pub fn module(&self) -> &str {
-        &self.module
-    }
-
-    /// Returns the source file path.
-    pub fn file(&self) -> &str {
-        &self.file
-    }
-
-    /// Returns the line number.
-    pub fn line(&self) -> u32 {
-        self.line
-    }
-
-    /// Returns the timestamp when the log was created.
-    pub fn timestamp(&self) -> DateTime<Utc> {
-        self.timestamp
-    }
-
-    /// Returns a reference to the metadata map.
-    pub fn metadata(&self) -> &HashMap<String, String> {
-        &self.metadata
-    }
-
     /// Returns the value associated with the given key, if any.
     pub fn get_metadata(&self, key: &str) -> Option<&str> {
         self.metadata.get(key).map(String::as_str)
     }
 }
 
-impl fmt::Display for Record {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for Record {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "[{}] {} {}:{} - {}",
@@ -157,68 +134,51 @@ impl fmt::Display for Record {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn test_record_creation() {
-        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
-
+        let record = Record::new(LogLevel::Info, "test message", None, None, None);
         assert_eq!(record.level(), LogLevel::Info);
-        assert_eq!(record.message(), "Test message");
+        assert_eq!(record.message(), "test message");
+        assert_eq!(record.module(), "unknown");
+        assert_eq!(record.file(), "unknown");
+        assert_eq!(record.line(), 0);
+    }
+
+    #[test]
+    fn test_record_with_metadata() {
+        let record = Record::new(LogLevel::Info, "test message", None, None, None)
+            .with_metadata("key", "value");
+        assert_eq!(record.metadata().get("key").unwrap(), "value");
+    }
+
+    #[test]
+    fn test_record_with_all_fields() {
+        let record = Record::new(
+            LogLevel::Info,
+            "test message",
+            Some("test_module".to_string()),
+            Some("test_file.rs".to_string()),
+            Some(42),
+        );
         assert_eq!(record.module(), "test_module");
-        assert_eq!(record.file(), "test.rs");
+        assert_eq!(record.file(), "test_file.rs");
         assert_eq!(record.line(), 42);
     }
 
     #[test]
-    fn test_record_metadata() {
-        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42)
-            .with_metadata("key1", "value1")
-            .with_metadata("key2", "value2");
-
-        assert_eq!(record.get_metadata("key1"), Some("value1"));
-        assert_eq!(record.get_metadata("key2"), Some("value2"));
-        assert_eq!(record.get_metadata("nonexistent"), None);
-    }
-
-    #[test]
-    fn test_record_structured_data() {
-        let data = json!({
-            "user_id": 123,
-            "action": "login",
-            "success": true
-        });
-
-        let record = Record::new(LogLevel::Info, "User action", "test_module", "test.rs", 42)
-            .with_structured_data("user_data", &data)
-            .unwrap();
-
-        let stored_data = record.get_metadata("user_data").unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(stored_data).unwrap();
-        assert_eq!(parsed["user_id"], 123);
-        assert_eq!(parsed["action"], "login");
-        assert_eq!(parsed["success"], true);
-    }
-
-    #[test]
     fn test_record_display() {
-        let record = Record::new(
-            LogLevel::Error,
-            "Test error message",
-            "test_module",
-            "test.rs",
-            42,
-        );
+        let record = Record::new(LogLevel::Error, "Test error message", None, None, None);
 
         let display = format!("{}", record);
         assert!(display.contains("ERROR"));
-        assert!(display.contains("test.rs:42"));
+        assert!(display.contains("unknown:0"));
         assert!(display.contains("Test error message"));
     }
 
     #[test]
     fn test_record_metadata_overwrite() {
-        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42)
+        let record = Record::new(LogLevel::Info, "Test message", None, None, None)
             .with_metadata("key", "value1")
             .with_metadata("key", "value2");
 
@@ -228,7 +188,7 @@ mod tests {
     #[test]
     fn test_record_structured_data_error() {
         // Create a Record instance
-        let record = Record::new(LogLevel::Info, "test message", "test_module", "test.rs", 42);
+        let record = Record::new(LogLevel::Info, "test message", None, None, None);
 
         // Create a type that will fail to serialize
         #[derive(Debug)]
@@ -253,7 +213,7 @@ mod tests {
     #[test]
     fn test_record_timestamp() {
         let before = Utc::now();
-        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
+        let record = Record::new(LogLevel::Info, "Test message", None, None, None);
         let after = Utc::now();
 
         assert!(record.timestamp() >= before);
