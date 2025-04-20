@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::fmt;
+use std::str::FromStr;
 
 /// Represents the severity level of a log message.
 /// Levels are ordered from least to most severe.
@@ -86,6 +87,23 @@ impl fmt::Display for LogLevel {
     }
 }
 
+impl FromStr for LogLevel {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "TRACE" => Ok(LogLevel::Trace),
+            "DEBUG" => Ok(LogLevel::Debug),
+            "INFO" => Ok(LogLevel::Info),
+            "SUCCESS" => Ok(LogLevel::Success),
+            "WARNING" => Ok(LogLevel::Warning),
+            "ERROR" => Ok(LogLevel::Error),
+            "CRITICAL" => Ok(LogLevel::Critical),
+            _ => Err(format!("Invalid log level: {}", s)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,5 +155,63 @@ mod tests {
         assert_eq!(LogLevel::Warning.color(), "\x1b[33m");
         assert_eq!(LogLevel::Error.color(), "\x1b[31m");
         assert_eq!(LogLevel::Critical.color(), "\x1b[35m");
+    }
+
+    #[test]
+    fn test_level_from_str() {
+        assert_eq!("trace".parse::<LogLevel>(), Ok(LogLevel::Trace));
+        assert_eq!("DEBUG".parse::<LogLevel>(), Ok(LogLevel::Debug));
+        assert_eq!("info".parse::<LogLevel>(), Ok(LogLevel::Info));
+        assert_eq!("SUCCESS".parse::<LogLevel>(), Ok(LogLevel::Success));
+        assert_eq!("warning".parse::<LogLevel>(), Ok(LogLevel::Warning));
+        assert_eq!("ERROR".parse::<LogLevel>(), Ok(LogLevel::Error));
+        assert_eq!("critical".parse::<LogLevel>(), Ok(LogLevel::Critical));
+        assert!("invalid".parse::<LogLevel>().is_err());
+    }
+
+    #[test]
+    fn test_level_from_str_edge_cases() {
+        // Test mixed case
+        assert_eq!("TrAcE".parse::<LogLevel>(), Ok(LogLevel::Trace));
+        assert_eq!("DeBuG".parse::<LogLevel>(), Ok(LogLevel::Debug));
+
+        // Test with whitespace
+        assert!(" trace ".parse::<LogLevel>().is_err());
+        assert!("debug ".parse::<LogLevel>().is_err());
+
+        // Test empty string
+        assert!("".parse::<LogLevel>().is_err());
+    }
+
+    #[test]
+    fn test_level_comparisons() {
+        // Test equality
+        assert_eq!(LogLevel::Info, LogLevel::Info);
+        assert_ne!(LogLevel::Info, LogLevel::Error);
+
+        // Test ordering
+        assert!(LogLevel::Trace < LogLevel::Critical);
+        assert!(LogLevel::Critical > LogLevel::Trace);
+
+        // Test PartialOrd implementation
+        assert!(LogLevel::Trace <= LogLevel::Debug);
+        assert!(LogLevel::Debug >= LogLevel::Trace);
+        assert!(LogLevel::Info <= LogLevel::Info);
+        assert!(LogLevel::Info >= LogLevel::Info);
+    }
+
+    #[test]
+    fn test_color_code_format() {
+        // Test that all color codes start with \x1b[
+        assert!(LogLevel::Trace.color().starts_with("\x1b["));
+        assert!(LogLevel::Debug.color().starts_with("\x1b["));
+        assert!(LogLevel::Info.color().starts_with("\x1b["));
+        assert!(LogLevel::Success.color().starts_with("\x1b["));
+        assert!(LogLevel::Warning.color().starts_with("\x1b["));
+        assert!(LogLevel::Error.color().starts_with("\x1b["));
+        assert!(LogLevel::Critical.color().starts_with("\x1b["));
+
+        // Test reset color format
+        assert_eq!(LogLevel::reset_color(), "\x1b[0m");
     }
 }

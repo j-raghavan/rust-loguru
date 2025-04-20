@@ -116,7 +116,7 @@ fn test_logger_level_modification() {
 
 #[test]
 fn test_logger_with_metadata() {
-    let logger = Logger::new(LogLevel::Info);
+    let _logger = Logger::new(LogLevel::Info);
     let record = Record::new(
         LogLevel::Info,
         "Test message with metadata",
