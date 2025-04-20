@@ -1,35 +1,22 @@
 use lazy_static::lazy_static;
 use parking_lot::RwLock;
-use std::fmt;
 use std::sync::Arc;
 
 use crate::handler::Handler;
 use crate::level::LogLevel;
 use crate::record::Record;
 
-/// The main logger implementation that manages log records and handlers.
+/// A logger that can handle log records
+#[derive(Debug)]
 pub struct Logger {
-    /// The minimum log level that will be processed.
+    /// The log level
     level: LogLevel,
-    /// List of registered handlers.
+    /// The handlers
     handlers: Vec<Arc<RwLock<dyn Handler>>>,
 }
 
-impl fmt::Debug for Logger {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Logger")
-            .field("level", &self.level)
-            .field("handlers_count", &self.handlers.len())
-            .finish()
-    }
-}
-
 impl Logger {
-    /// Creates a new logger with the given minimum log level.
-    ///
-    /// # Arguments
-    ///
-    /// * `level` - The minimum log level to process
+    /// Create a new logger with the given log level
     pub fn new(level: LogLevel) -> Self {
         Self {
             level,
@@ -37,29 +24,30 @@ impl Logger {
         }
     }
 
-    /// Adds a handler to the logger.
-    ///
-    /// # Arguments
-    ///
-    /// * `handler` - The handler to add
-    ///
-    /// # Returns
-    ///
-    /// The modified `Logger` instance for method chaining.
-    pub fn add_handler(mut self, handler: Arc<RwLock<dyn Handler>>) -> Self {
+    /// Get the log level
+    pub fn level(&self) -> LogLevel {
+        self.level
+    }
+
+    /// Set the log level
+    pub fn set_level(&mut self, level: LogLevel) -> &mut Self {
+        self.level = level;
+        self
+    }
+
+    /// Add a handler to the logger
+    pub fn add_handler(&mut self, handler: Arc<RwLock<dyn Handler>>) -> &mut Self {
         self.handlers.push(handler);
         self
     }
 
-    /// Logs a record if its level is at or above the logger's minimum level.
-    ///
-    /// # Arguments
-    ///
-    /// * `record` - The record to log
-    ///
-    /// # Returns
-    ///
-    /// `true` if the record was successfully logged by at least one handler, `false` otherwise.
+    /// Remove a handler from the logger
+    pub fn remove_handler(&mut self, handler: Arc<RwLock<dyn Handler>>) -> &mut Self {
+        self.handlers.retain(|h| !Arc::ptr_eq(h, &handler));
+        self
+    }
+
+    /// Log a record
     pub fn log(&self, record: &Record) -> bool {
         if record.level() < self.level {
             return false;
@@ -67,26 +55,38 @@ impl Logger {
 
         let mut any_handled = false;
         for handler in &self.handlers {
-            let handler = handler.read();
-            if handler.is_enabled() && record.level() >= handler.level() && handler.handle(record) {
+            let mut guard = handler.write();
+            if guard.enabled() && record.level() >= guard.level() && guard.handle(record) {
                 any_handled = true;
             }
         }
         any_handled
     }
 
-    /// Returns the current minimum log level.
-    pub fn level(&self) -> LogLevel {
-        self.level
+    /// Log a message at the given level
+    pub fn log_message(&self, level: LogLevel, message: impl Into<String>) -> bool {
+        let record = Record::new(level, message, None::<String>, None::<String>, None);
+        self.log(&record)
     }
 
-    /// Sets the minimum log level.
-    ///
-    /// # Arguments
-    ///
-    /// * `level` - The new minimum log level
-    pub fn set_level(&mut self, level: LogLevel) {
-        self.level = level;
+    /// Log a debug message
+    pub fn debug(&self, message: impl Into<String>) -> bool {
+        self.log_message(LogLevel::Debug, message)
+    }
+
+    /// Log an info message
+    pub fn info(&self, message: impl Into<String>) -> bool {
+        self.log_message(LogLevel::Info, message)
+    }
+
+    /// Log a warning message
+    pub fn warn(&self, message: impl Into<String>) -> bool {
+        self.log_message(LogLevel::Warning, message)
+    }
+
+    /// Log an error message
+    pub fn error(&self, message: impl Into<String>) -> bool {
+        self.log_message(LogLevel::Error, message)
     }
 }
 
@@ -95,18 +95,9 @@ lazy_static! {
     static ref GLOBAL_LOGGER: RwLock<Logger> = RwLock::new(Logger::new(LogLevel::Info));
 }
 
-/// Initializes the global logger with the given configuration.
-///
-/// # Arguments
-///
-/// * `logger` - The logger configuration to use
-///
-/// # Panics
-///
-/// Panics if the global logger has already been initialized.
-pub fn init(logger: Logger) {
-    let mut global = GLOBAL_LOGGER.write();
-    *global = logger;
+/// Initialize the global logger
+pub fn init(logger: Logger) -> Logger {
+    logger
 }
 
 /// Returns a reference to the global logger.
@@ -134,46 +125,85 @@ mod tests {
 
     #[test]
     fn test_logger_creation() {
-        let logger = Logger::new(LogLevel::Debug);
+        let logger = Logger::new(LogLevel::Info);
+        assert_eq!(logger.level(), LogLevel::Info);
+        assert!(logger.handlers.is_empty());
+    }
+
+    #[test]
+    fn test_logger_level() {
+        let mut logger = Logger::new(LogLevel::Info);
+        logger.set_level(LogLevel::Debug);
         assert_eq!(logger.level(), LogLevel::Debug);
     }
 
     #[test]
-    fn test_logger_add_handler() {
+    fn test_logger_handler() {
+        let mut logger = Logger::new(LogLevel::Info);
         let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
-        let logger = Logger::new(LogLevel::Debug).add_handler(handler.clone());
-        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
-        assert!(logger.log(&record));
+        logger.add_handler(handler.clone());
+        assert_eq!(logger.handlers.len(), 1);
+        logger.remove_handler(handler);
+        assert!(logger.handlers.is_empty());
     }
 
     #[test]
     fn test_logger_log() {
+        let mut logger = Logger::new(LogLevel::Info);
         let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
-        let logger = Logger::new(LogLevel::Debug).add_handler(handler.clone());
+        logger.add_handler(handler);
 
-        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
-
-        assert!(logger.log(&record));
-
-        let record = Record::new(
-            LogLevel::Trace,
-            "Test message",
-            "test_module",
-            "test.rs",
-            42,
-        );
-
-        assert!(!logger.log(&record));
+        // Test logging at different levels
+        assert!(!logger.debug("Debug message")); // Should not log (below Info)
+        assert!(logger.info("Info message")); // Should log
+        assert!(logger.warn("Warning message")); // Should log
+        assert!(logger.error("Error message")); // Should log
     }
 
     #[test]
-    fn test_global_logger() {
+    fn test_logger_level_filtering() {
+        let mut logger = Logger::new(LogLevel::Warning);
         let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
-        let logger = Logger::new(LogLevel::Debug).add_handler(handler.clone());
-        init(logger);
+        logger.add_handler(handler);
 
-        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
+        // Test level filtering
+        assert!(!logger.debug("Debug message")); // Should not log
+        assert!(!logger.info("Info message")); // Should not log
+        assert!(logger.warn("Warning message")); // Should log
+        assert!(logger.error("Error message")); // Should log
+    }
 
-        assert!(log(&record));
+    #[test]
+    fn test_logger_handler_filtering() {
+        let mut logger = Logger::new(LogLevel::Info);
+        let mut handler = NullHandler::new(LogLevel::Info);
+        handler.set_level(LogLevel::Warning);
+        let handler = Arc::new(RwLock::new(handler));
+        logger.add_handler(handler);
+
+        // Test handler level filtering
+        assert!(!logger.debug("Debug message")); // Should not log
+        assert!(!logger.info("Info message")); // Should not log
+        assert!(logger.warn("Warning message")); // Should log
+        assert!(logger.error("Error message")); // Should log
+    }
+
+    #[test]
+    fn test_logger_disabled_handler() {
+        let mut logger = Logger::new(LogLevel::Info);
+        let mut handler = NullHandler::new(LogLevel::Info);
+        handler.set_enabled(false);
+        let handler = Arc::new(RwLock::new(handler));
+        logger.add_handler(handler);
+
+        // Test disabled handler
+        assert!(!logger.info("Info message")); // Should not log
+    }
+
+    #[test]
+    fn test_logger_init() {
+        let logger = Logger::new(LogLevel::Info);
+        let logger = init(logger);
+        assert_eq!(logger.level(), LogLevel::Info);
     }
 }

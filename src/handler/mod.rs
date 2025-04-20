@@ -1,69 +1,66 @@
+use parking_lot::RwLock;
+use std::fmt;
+use std::sync::Arc;
+
+use crate::formatter::Formatter;
 use crate::level::LogLevel;
 use crate::record::Record;
 
-/// Trait defining the interface for log handlers.
-/// Handlers are responsible for processing and outputting log records.
-pub trait Handler: Send + Sync {
-    /// Processes a log record.
-    ///
-    /// # Arguments
-    ///
-    /// * `record` - The log record to process
-    ///
-    /// # Returns
-    ///
-    /// `true` if the record was successfully processed, `false` otherwise.
-    fn handle(&self, record: &Record) -> bool;
-
-    /// Returns the minimum log level that this handler will process.
-    /// Records with levels below this threshold will be ignored.
+/// Trait defining the interface for log handlers
+pub trait Handler: fmt::Debug + Send + Sync {
+    /// Get the current log level
     fn level(&self) -> LogLevel;
 
-    /// Sets the minimum log level for this handler.
-    ///
-    /// # Arguments
-    ///
-    /// * `level` - The new minimum log level
+    /// Set the log level
     fn set_level(&mut self, level: LogLevel);
 
-    /// Returns whether this handler is enabled.
-    fn is_enabled(&self) -> bool;
+    /// Check if the handler is enabled
+    fn enabled(&self) -> bool;
 
-    /// Sets whether this handler is enabled.
-    ///
-    /// # Arguments
-    ///
-    /// * `enabled` - Whether the handler should be enabled
+    /// Enable or disable the handler
     fn set_enabled(&mut self, enabled: bool);
+
+    /// Get the formatter
+    fn formatter(&self) -> &Formatter;
+
+    /// Set the formatter
+    fn set_formatter(&mut self, formatter: Formatter);
+
+    /// Handle a log record
+    fn handle(&mut self, record: &Record) -> bool;
 }
 
-/// A simple handler that does nothing with log records.
-/// Useful for testing or as a placeholder.
-#[derive(Debug, Clone)]
+/// A type alias for a thread-safe handler reference.
+pub type HandlerRef = Arc<RwLock<dyn Handler>>;
+
+/// Creates a new handler reference from a handler.
+pub fn new_handler_ref<H: Handler + 'static>(handler: H) -> HandlerRef {
+    Arc::new(RwLock::new(handler))
+}
+
+/// A null handler that does nothing
+#[derive(Debug)]
 pub struct NullHandler {
+    /// The log level
     level: LogLevel,
+    /// Whether the handler is enabled
     enabled: bool,
+    /// The formatter
+    formatter: Formatter,
 }
 
 impl NullHandler {
-    /// Creates a new `NullHandler` with the given log level.
-    ///
-    /// # Arguments
-    ///
-    /// * `level` - The minimum log level to process
+    /// Create a new null handler with the given log level
     pub fn new(level: LogLevel) -> Self {
         Self {
             level,
             enabled: true,
+            formatter: Formatter::new(),
         }
     }
 }
 
 impl Handler for NullHandler {
-    fn handle(&self, _record: &Record) -> bool {
-        true
-    }
-
     fn level(&self) -> LogLevel {
         self.level
     }
@@ -72,33 +69,54 @@ impl Handler for NullHandler {
         self.level = level;
     }
 
-    fn is_enabled(&self) -> bool {
+    fn enabled(&self) -> bool {
         self.enabled
     }
 
     fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
     }
+
+    fn formatter(&self) -> &Formatter {
+        &self.formatter
+    }
+
+    fn set_formatter(&mut self, formatter: Formatter) {
+        self.formatter = formatter;
+    }
+
+    fn handle(&mut self, record: &Record) -> bool {
+        self.enabled && record.level() >= self.level
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::record::Record;
 
     #[test]
     fn test_null_handler() {
         let mut handler = NullHandler::new(LogLevel::Info);
-        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
-
-        assert!(handler.handle(&record));
         assert_eq!(handler.level(), LogLevel::Info);
-        assert!(handler.is_enabled());
+        assert!(handler.enabled());
 
-        handler.set_level(LogLevel::Debug);
-        assert_eq!(handler.level(), LogLevel::Debug);
+        handler.set_level(LogLevel::Warning);
+        assert_eq!(handler.level(), LogLevel::Warning);
 
         handler.set_enabled(false);
-        assert!(!handler.is_enabled());
+        assert!(!handler.enabled());
+
+        let record = Record::new(
+            LogLevel::Error,
+            "test",
+            None::<String>,
+            None::<String>,
+            None,
+        );
+        assert!(!handler.handle(&record));
+
+        let formatter = Formatter::new().with_colors(false);
+        handler.set_formatter(formatter);
+        assert!(!handler.formatter().use_colors);
     }
 }
