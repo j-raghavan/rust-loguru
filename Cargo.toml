@@ -3,14 +3,11 @@ name = "rust-loguru"
 version = "0.1.0"
 edition = "2021"
 authors = ["Jayasimha Raghavan <mr.jayasimha@gmail.com>"]
-description = "A flexible and extensible logging library for Rust, inspired by Python's Loguru"
+description = "A flexible and extensible logging library for Rust. Similar functionality as python's loguru package."
 license = "MIT"
 repository = "https://github.com/j-raghavan/rust-loguru"
-documentation = "https://docs.rs/rust-loguru"
 readme = "README.md"
-keywords = ["logging", "log", "logger", "loguru"]
-categories = ["development-tools", "development-tools::debugging"]
-exclude = ["specs/", "*.log", "bench"]
+exclude = ["tests/", "specs/", "examples/", "*.log"]
 
 [dependencies]
 lazy_static = "1.4.0"
@@ -26,11 +23,6 @@ rand = "0.8"
 criterion = "0.5"
 tempfile = "3.8"
 
-[features]
-default = []
-json = []
-colors = ["colored"]
-
 [[example]]
 name = "api_usage"
 path = "examples/api_usage.rs"
@@ -38,11 +30,3 @@ path = "examples/api_usage.rs"
 [[example]]
 name = "advanced_usage"
 path = "examples/advanced_usage.rs"
-
-[[bench]]
-name = "logging_bench"
-harness = false
-
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
