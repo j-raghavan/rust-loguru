@@ -6,7 +6,8 @@ on:
       - "v[0-9]+.*"
 
 permissions:
-  contents: write  
+  contents: write
+  pages: write      # Added for GitHub Pages deployment
 
 env:
   CARGO_TERM_COLOR: always
@@ -25,6 +26,12 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
 
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
       - name: Build
         run: cargo build --release
 
@@ -32,68 +39,30 @@ jobs:
         run: cargo test --release
 
   create-release:
-    name: Create Release
+    name: Create GitHub Release
     needs: verify
     runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          name: Release ${{ github.ref }}
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
           generate_release_notes: true
 
-  build-release:
-    name: Build Release (${{ matrix.target }})
+  publish-crate:
+    name: Publish to crates.io
     needs: create-release
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Windows x86_64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact_name: rust-loguru.exe
-            asset_name: rust-loguru-x86_64-windows.exe
-
-          # Windows ARM64
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            artifact_name: rust-loguru.exe
-            asset_name: rust-loguru-aarch64-windows.exe
-
-          # Linux x86_64
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact_name: rust-loguru
-            asset_name: rust-loguru-x86_64-linux
-
-          # Linux ARM64
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            artifact_name: rust-loguru
-            asset_name: rust-loguru-aarch64-linux
-
-          # macOS x86_64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact_name: rust-loguru
-            asset_name: rust-loguru-x86_64-darwin
-
-          # macOS ARM64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact_name: rust-loguru
-            asset_name: rust-loguru-aarch64-darwin
-
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -101,44 +70,65 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-          targets: ${{ matrix.target }}
 
-      - name: Install cross-compilation tools
-        if: runner.os == 'Linux' && contains(matrix.target, 'aarch64')
+      - name: Verify Cargo.toml is complete
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      - name: Build target
-        run: |
-          cargo build --release --target ${{ matrix.target }}
-
-      - name: Prepare artifact
-        shell: bash
-        run: |
-          mkdir -p dist
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "dist/${{ matrix.asset_name }}"
-          else
-            cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "dist/${{ matrix.asset_name }}"
-            chmod +x "dist/${{ matrix.asset_name }}"
+          if ! grep -q "description" Cargo.toml; then
+            echo "Cargo.toml is missing 'description' field"
+            exit 1
+          fi
+          if ! grep -q "license" Cargo.toml; then
+            echo "Cargo.toml is missing 'license' field"
+            exit 1
+          fi
+          if ! grep -q "repository" Cargo.toml; then
+            echo "Cargo.toml is missing 'repository' field"
+            exit 1
           fi
 
-      - name: Generate checksum
-        shell: bash
-        run: |
-          cd dist
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            certutil -hashfile ${{ matrix.asset_name }} SHA256 > ${{ matrix.asset_name }}.sha256
-          else
-            shasum -a 256 ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
-          fi
+      - name: Check publish is possible
+        run: cargo publish --dry-run
 
-      - name: Upload Release Assets
-        uses: softprops/action-gh-release@v1
+      - name: Publish crate
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_KEY }}
+        run: cargo publish
+        
+  build-docs:
+    name: Build and Publish Documentation
+    needs: publish-crate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
         with:
-          files: |
-            dist/${{ matrix.asset_name }}
-            dist/${{ matrix.asset_name }}.sha256
+          toolchain: stable
+
+      - name: Build documentation
+        run: cargo doc --no-deps --document-private-items
+
+      - name: Determine crate name for documentation
+        id: crate_name
+        run: |
+          CRATE_NAME=$(grep -m 1 "name" Cargo.toml | cut -d '"' -f 2 | tr '-' '_')
+          echo "CRATE_NAME=${CRATE_NAME}" >> $GITHUB_ENV
+          echo "Crate name: ${CRATE_NAME}"
+
+      - name: Create index.html redirect
+        run: |
+          echo '<meta http-equiv="refresh" content="0; url=${{ env.CRATE_NAME }}/index.html">' > target/doc/index.html
+          cat target/doc/index.html
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v3
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: ./target/doc
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
