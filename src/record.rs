@@ -219,4 +219,48 @@ mod tests {
         assert!(record.timestamp() >= before);
         assert!(record.timestamp() <= after);
     }
+
+    #[test]
+    fn test_record_metadata_overwrite() {
+        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42)
+            .with_metadata("key", "value1")
+            .with_metadata("key", "value2");
+
+        assert_eq!(record.get_metadata("key"), Some("value2"));
+    }
+
+    #[test]
+    fn test_record_structured_data_error() {
+        // Create a Record instance
+        let record = Record::new(LogLevel::Info, "test message", "test_module", "test.rs", 42);
+
+        // Create a type that will fail to serialize
+        #[derive(Debug)]
+        struct CustomError;
+
+        impl serde::Serialize for CustomError {
+            fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                Err(serde::ser::Error::custom("test error"))
+            }
+        }
+
+        let error_value = CustomError;
+        let result = record.with_structured_data("key", &error_value);
+
+        // Should fail because CustomError always returns an error during serialization
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_record_timestamp() {
+        let before = Utc::now();
+        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
+        let after = Utc::now();
+
+        assert!(record.timestamp() >= before);
+        assert!(record.timestamp() <= after);
+    }
 }
