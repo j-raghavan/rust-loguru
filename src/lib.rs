@@ -31,6 +31,7 @@
 //! logger.log(&record);
 //! ```
 
+pub mod formatter;
 pub mod handler;
 pub mod level;
 pub mod logger;
