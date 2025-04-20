@@ -52,12 +52,12 @@ impl LogLevel {
     /// Returns the ANSI color code for this log level.
     pub fn color(&self) -> &'static str {
         match self {
-            LogLevel::Trace => "\x1b[37m",  // white
-            LogLevel::Debug => "\x1b[34m",  // blue
-            LogLevel::Info => "\x1b[32m",   // green
-            LogLevel::Success => "\x1b[36m", // cyan
-            LogLevel::Warning => "\x1b[33m", // yellow
-            LogLevel::Error => "\x1b[31m",   // red
+            LogLevel::Trace => "\x1b[37m",    // white
+            LogLevel::Debug => "\x1b[34m",    // blue
+            LogLevel::Info => "\x1b[32m",     // green
+            LogLevel::Success => "\x1b[36m",  // cyan
+            LogLevel::Warning => "\x1b[33m",  // yellow
+            LogLevel::Error => "\x1b[31m",    // red
             LogLevel::Critical => "\x1b[35m", // purple
         }
     }
@@ -138,4 +138,4 @@ mod tests {
         assert_eq!(LogLevel::Error.color(), "\x1b[31m");
         assert_eq!(LogLevel::Critical.color(), "\x1b[35m");
     }
-} 
+}

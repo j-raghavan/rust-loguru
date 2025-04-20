@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use parking_lot::RwLock;
-use std::sync::Arc;
 use std::fmt;
+use std::sync::Arc;
 
 use crate::handler::Handler;
 use crate::level::LogLevel;
@@ -144,13 +144,7 @@ mod tests {
     fn test_logger_add_handler() {
         let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
         let logger = Logger::new(LogLevel::Debug).add_handler(handler.clone());
-        let record = Record::new(
-            LogLevel::Info,
-            "Test message",
-            "test_module",
-            "test.rs",
-            42,
-        );
+        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
         assert!(logger.log(&record));
     }
 
@@ -159,13 +153,7 @@ mod tests {
         let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
         let logger = Logger::new(LogLevel::Debug).add_handler(handler.clone());
 
-        let record = Record::new(
-            LogLevel::Info,
-            "Test message",
-            "test_module",
-            "test.rs",
-            42,
-        );
+        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
 
         assert!(logger.log(&record));
 
@@ -186,14 +174,8 @@ mod tests {
         let logger = Logger::new(LogLevel::Debug).add_handler(handler.clone());
         init(logger);
 
-        let record = Record::new(
-            LogLevel::Info,
-            "Test message",
-            "test_module",
-            "test.rs",
-            42,
-        );
+        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
 
         assert!(log(&record));
     }
-} 
+}

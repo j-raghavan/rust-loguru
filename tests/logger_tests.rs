@@ -1,7 +1,7 @@
-use rust_loguru::{Handler, Logger, LogLevel, Record};
-use rust_loguru::handler::NullHandler;
-use std::sync::Arc;
 use parking_lot::RwLock;
+use rust_loguru::handler::NullHandler;
+use rust_loguru::{Handler, LogLevel, Logger, Record};
+use std::sync::Arc;
 
 #[test]
 fn test_logger_initialization() {
@@ -13,15 +13,9 @@ fn test_logger_initialization() {
 fn test_logger_handler_registration() {
     let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
     let logger = Logger::new(LogLevel::Debug).add_handler(handler.clone());
-    
+
     // Test by logging a message
-    let record = Record::new(
-        LogLevel::Info,
-        "Test message",
-        "test_module",
-        "test.rs",
-        42,
-    );
+    let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
     assert!(logger.log(&record));
 }
 
@@ -31,13 +25,7 @@ fn test_logger_level_filtering() {
     let logger = Logger::new(LogLevel::Info).add_handler(handler.clone());
 
     // Test with level above minimum
-    let record = Record::new(
-        LogLevel::Info,
-        "Test message",
-        "test_module",
-        "test.rs",
-        42,
-    );
+    let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
     assert!(logger.log(&record));
 
     // Test with level below minimum
@@ -67,13 +55,7 @@ fn test_logger_handler_level_filtering() {
     assert!(logger.log(&record));
 
     // Test with level below handler minimum
-    let record = Record::new(
-        LogLevel::Info,
-        "Test message",
-        "test_module",
-        "test.rs",
-        42,
-    );
+    let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
     assert!(!logger.log(&record));
 }
 
@@ -86,13 +68,7 @@ fn test_logger_disabled_handler() {
     }
     let logger = Logger::new(LogLevel::Debug).add_handler(handler.clone());
 
-    let record = Record::new(
-        LogLevel::Info,
-        "Test message",
-        "test_module",
-        "test.rs",
-        42,
-    );
+    let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
     assert!(!logger.log(&record));
 }
 
@@ -102,13 +78,7 @@ fn test_global_logger() {
     let logger = Logger::new(LogLevel::Debug).add_handler(handler.clone());
     rust_loguru::init(logger);
 
-    let record = Record::new(
-        LogLevel::Info,
-        "Test message",
-        "test_module",
-        "test.rs",
-        42,
-    );
+    let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
     assert!(rust_loguru::log(&record));
 }
 
@@ -131,13 +101,7 @@ fn test_logger_multiple_handlers() {
     assert!(logger.log(&record));
 
     // Test with Info level (should be handled by handler1 only)
-    let record = Record::new(
-        LogLevel::Info,
-        "Test message",
-        "test_module",
-        "test.rs",
-        42,
-    );
+    let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
     assert!(logger.log(&record));
 }
 
@@ -167,4 +131,4 @@ fn test_logger_with_metadata() {
     assert_eq!(metadata.len(), 2);
     assert_eq!(metadata.get("key1"), Some(&"value1".to_string()));
     assert_eq!(metadata.get("key2"), Some(&"value2".to_string()));
-} 
+}

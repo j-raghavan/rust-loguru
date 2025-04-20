@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
-use serde::Serialize;
 
 use crate::level::LogLevel;
 
@@ -157,13 +157,7 @@ mod tests {
 
     #[test]
     fn test_record_creation() {
-        let record = Record::new(
-            LogLevel::Info,
-            "Test message",
-            "test_module",
-            "test.rs",
-            42,
-        );
+        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42);
 
         assert_eq!(record.level(), LogLevel::Info);
         assert_eq!(record.message(), "Test message");
@@ -174,15 +168,9 @@ mod tests {
 
     #[test]
     fn test_record_metadata() {
-        let record = Record::new(
-            LogLevel::Info,
-            "Test message",
-            "test_module",
-            "test.rs",
-            42,
-        )
-        .with_metadata("key1", "value1")
-        .with_metadata("key2", "value2");
+        let record = Record::new(LogLevel::Info, "Test message", "test_module", "test.rs", 42)
+            .with_metadata("key1", "value1")
+            .with_metadata("key2", "value2");
 
         assert_eq!(record.get_metadata("key1"), Some("value1"));
         assert_eq!(record.get_metadata("key2"), Some("value2"));
@@ -197,15 +185,9 @@ mod tests {
             "success": true
         });
 
-        let record = Record::new(
-            LogLevel::Info,
-            "User action",
-            "test_module",
-            "test.rs",
-            42,
-        )
-        .with_structured_data("user_data", &data)
-        .unwrap();
+        let record = Record::new(LogLevel::Info, "User action", "test_module", "test.rs", 42)
+            .with_structured_data("user_data", &data)
+            .unwrap();
 
         let stored_data = record.get_metadata("user_data").unwrap();
         let parsed: serde_json::Value = serde_json::from_str(stored_data).unwrap();
@@ -229,4 +211,4 @@ mod tests {
         assert!(display.contains("test.rs:42"));
         assert!(display.contains("Test error message"));
     }
-} 
+}
