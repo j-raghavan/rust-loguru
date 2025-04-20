@@ -12,15 +12,18 @@
 //!
 //! ```rust,no_run
 //! use rust_loguru::{Logger, LogLevel, Record};
-//! use rust_loguru::handler::NullHandler;
+//! use rust_loguru::handler::console::ConsoleHandler;
 //! use rust_loguru::{info, debug, error};
 //! use std::sync::Arc;
 //! use parking_lot::RwLock;
 //!
 //! // Create a logger with a handler
-//! let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
+//! let handler = Arc::new(RwLock::new(ConsoleHandler::new()));
 //! let mut logger = Logger::new(LogLevel::Debug);
 //! logger.add_handler(handler);
+//!
+//! // Set the global logger (this step is required for macros to work)
+//! rust_loguru::init(logger);
 //!
 //! // Log a message
 //! let record = Record::new(
@@ -30,7 +33,7 @@
 //!     Some("main.rs".to_string()),
 //!     Some(42),
 //! );
-//! logger.log(&record);
+//! rust_loguru::log(&record);
 //!
 //! // Or use the convenient macros
 //! info!("Hello, world!");

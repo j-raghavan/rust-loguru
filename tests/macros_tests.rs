@@ -84,7 +84,10 @@ fn test_macro_formatting() {
     let logger = create_test_logger(LogLevel::Info);
     let _ = rust_loguru::init(logger);
 
+    // The issue might be with the format parameter - let's make sure the handler can process it
     let result = info!("Formatted message: {}", 42);
+    // Debug output to help diagnose
+    println!("Formatting macro result: {}", result);
     assert!(result, "Formatted macro should return true");
 }
 
@@ -139,13 +142,24 @@ fn test_macro_level_filtering() {
 #[test]
 fn test_macro_with_multiple_handlers() {
     let mut logger = Logger::new(LogLevel::Info);
-    logger.add_handler(Arc::new(RwLock::new(NullHandler::new(LogLevel::Info))));
-    logger.add_handler(Arc::new(RwLock::new(NullHandler::new(LogLevel::Warning))));
+
+    // Create and add the first handler with INFO level
+    let handler1 = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
+    logger.add_handler(handler1);
+
+    // Create and add the second handler with WARNING level
+    let handler2 = Arc::new(RwLock::new(NullHandler::new(LogLevel::Warning)));
+    logger.add_handler(handler2);
+
     let _ = rust_loguru::init(logger);
 
-    // Info message should be handled by handler1
+    // Info message should be handled by handler1 only
+    // The return value should be true if ANY handler processed the message
     let result = info!("Test info message");
-    assert!(result, "Info message should be handled");
+    assert!(
+        result,
+        "Info message should be handled by at least one handler"
+    );
 
     // Warning message should be handled by both handlers
     let result = warn!("Test warning message");

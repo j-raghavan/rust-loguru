@@ -24,13 +24,13 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rust-loguru = "0.1.0"
+rust-loguru = "0.1.8" # Or Newer version
 ```
 
 ## Quick Start
 
 ```rust
-use rust_loguru::{info, debug, error, init, LogLevel};
+use rust_loguru::{info, debug, error, init, LogLevel, Logger};
 use rust_loguru::handler::console::ConsoleHandler;
 use std::sync::Arc;
 use parking_lot::RwLock;
@@ -42,8 +42,11 @@ fn main() {
             .with_colors(true)
     ));
     
-    let logger = rust_loguru::Logger::new(LogLevel::Debug);
-    init(logger.clone().add_handler(handler));
+    let mut logger = Logger::new(LogLevel::Debug);
+    logger.add_handler(handler);
+    
+    // Set the global logger (required for macros to work)
+    init(logger);
     
     // Log messages at different levels
     debug!("This is a debug message");
@@ -258,7 +261,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under either of:
+This project is licensed under MIT of:
 
 - Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
 - MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+```
