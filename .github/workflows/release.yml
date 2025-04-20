@@ -17,7 +17,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
 
       - name: Build
         run: cargo build --release
@@ -45,7 +48,7 @@ jobs:
           generate_release_notes: true
 
   build-release:
-    name: Build Release
+    name: Build Release (${{ matrix.target }})
     needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
@@ -92,8 +95,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
 
       - name: Install cross-compilation tools
