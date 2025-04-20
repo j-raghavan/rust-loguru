@@ -6,6 +6,9 @@ use crate::formatter::Formatter;
 use crate::level::LogLevel;
 use crate::record::Record;
 
+pub mod console;
+pub mod file;
+
 /// Trait defining the interface for log handlers
 pub trait Handler: fmt::Debug + Send + Sync {
     /// Get the current log level
