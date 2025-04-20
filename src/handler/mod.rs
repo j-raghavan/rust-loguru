@@ -42,7 +42,7 @@ pub fn new_handler_ref<H: Handler + 'static>(handler: H) -> HandlerRef {
 }
 
 /// A null handler that does nothing
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NullHandler {
     /// The log level
     level: LogLevel,

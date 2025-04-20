@@ -31,12 +31,14 @@
 //! logger.log(&record);
 //! ```
 
+pub mod config;
 pub mod formatter;
 pub mod handler;
 pub mod level;
 pub mod logger;
 pub mod record;
 
+pub use config::{LoggerConfig, LoggerConfigBuilder};
 pub use handler::Handler;
 pub use level::LogLevel;
 pub use logger::{global, init, log, Logger};
