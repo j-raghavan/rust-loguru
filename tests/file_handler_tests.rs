@@ -1,6 +1,5 @@
 use std::fs;
 use std::io;
-use std::io::Write;
 use tempfile::tempdir;
 
 use rust_loguru::handler::file::FileHandler;

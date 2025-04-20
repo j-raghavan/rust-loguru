@@ -37,7 +37,6 @@ impl std::fmt::Debug for Formatter {
             .field("format_fn", &self.format_fn.is_some())
             .finish()
     }
-
 }
 
 impl Formatter {
@@ -52,7 +51,6 @@ impl Formatter {
 
             pattern: "{level} [{file}:{line}] {message} {metadata}".to_string(),
             format_fn: None,
-
         }
     }
 

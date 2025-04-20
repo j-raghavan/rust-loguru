@@ -217,7 +217,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-  
+
     fn test_file_handler_creation() -> io::Result<()> {
         let temp_dir = TempDir::new()?;
         let log_path = temp_dir.path().join("test.log");
