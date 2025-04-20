@@ -1,6 +1,6 @@
 [package]
 name = "rust-loguru"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 authors = ["Jayasimha Raghavan <mr.jayasimha@gmail.com>"]
 description = "A flexible and extensible logging library for Rust. Similar functionality as python's loguru package."
