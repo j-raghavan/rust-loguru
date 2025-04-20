@@ -95,41 +95,35 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_KEY }}
         run: cargo publish --allow-dirty
         
-  build-docs:
-    name: Build and Publish Documentation
+  build-and-deploy-docs:
+    name: Build and Deploy Documentation
     needs: publish-crate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-
       - name: Build documentation
         run: cargo doc --no-deps --document-private-items
-
-      - name: Determine crate name for documentation
-        id: crate_name
+      - name: Prepare documentation
         run: |
           CRATE_NAME=$(grep -m 1 "name" Cargo.toml | cut -d '"' -f 2 | tr '-' '_')
-          echo "CRATE_NAME=${CRATE_NAME}" >> $GITHUB_ENV
-          echo "Crate name: ${CRATE_NAME}"
-
-      - name: Create index.html redirect
-        run: |
-          echo '<meta http-equiv="refresh" content="0; url=${{ env.CRATE_NAME }}/index.html">' > target/doc/index.html
-          cat target/doc/index.html
-
-      - name: Setup GitHub Pages
-        uses: actions/configure-pages@v3
-
-      - name: Upload Pages artifact
+          echo '<meta http-equiv="refresh" content="0; url='${CRATE_NAME}'/index.html">' > target/doc/index.html
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./target/doc
-
+          path: './target/doc'
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4
