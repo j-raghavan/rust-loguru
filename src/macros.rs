@@ -130,15 +130,20 @@ macro_rules! warn {
 /// ```
 #[macro_export]
 macro_rules! error {
-    ($($arg:tt)*) => {
-        $crate::log(&$crate::Record::new(
+    ($($arg:tt)*) => {{
+        println!("=== error! macro called ===");
+        let record = $crate::Record::new(
             $crate::LogLevel::Error,
             format!($($arg)*),
             Some(module_path!().to_string()),
             Some(file!().to_string()),
             Some(line!()),
-        ))
-    };
+        );
+        println!("Created record with level: {:?}", record.level());
+        let result = $crate::log(&record);
+        println!("=== error! macro finished with result: {} ===", result);
+        result
+    }};
 }
 
 /// Logs a message at the CRITICAL level.
