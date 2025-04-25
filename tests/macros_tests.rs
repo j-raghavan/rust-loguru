@@ -25,9 +25,11 @@ fn test_trace_macro() {
 #[test]
 fn test_debug_macro() {
     let logger = create_test_logger(LogLevel::Debug);
+    println!("Logger level: {:?}", logger.level());
     let _ = rust_loguru::init(logger);
 
     let result = debug!("Test debug message");
+    println!("Debug macro result: {}", result);
     assert!(result, "Debug macro should return true");
 }
 
