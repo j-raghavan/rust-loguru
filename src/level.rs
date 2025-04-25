@@ -1,10 +1,11 @@
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
 
 /// Represents the severity level of a log message.
 /// Levels are ordered from least to most severe.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum LogLevel {
     /// The lowest level of logging, used for very detailed debugging information.
     Trace,
@@ -63,9 +64,36 @@ impl LogLevel {
         }
     }
 
+    /// Returns the emoji representation of the log level.
+    pub fn emoji(&self) -> &'static str {
+        match self {
+            LogLevel::Trace => "🔍",
+            LogLevel::Debug => "🐛",
+            LogLevel::Info => "ℹ️",
+            LogLevel::Success => "✅",
+            LogLevel::Warning => "⚠️",
+            LogLevel::Error => "❌",
+            LogLevel::Critical => "💥",
+        }
+    }
+
     /// Returns the ANSI reset code.
     pub fn reset_color() -> &'static str {
         "\x1b[0m"
+    }
+
+    /// Checks if a module path matches the given pattern.
+    /// The pattern can be a simple string match or a glob pattern.
+    pub fn matches_module_pattern(&self, module_path: &str, pattern: &str) -> bool {
+        if pattern.contains('*') {
+            // Simple glob pattern matching
+            let pattern = pattern.replace('*', ".*");
+            let regex = regex::Regex::new(&format!("^{}$", pattern)).unwrap();
+            regex.is_match(module_path)
+        } else {
+            // Simple string matching
+            module_path.contains(pattern)
+        }
     }
 }
 
@@ -213,5 +241,41 @@ mod tests {
 
         // Test reset color format
         assert_eq!(LogLevel::reset_color(), "\x1b[0m");
+    }
+
+    #[test]
+    fn test_level_emoji() {
+        assert_eq!(LogLevel::Trace.emoji(), "🔍");
+        assert_eq!(LogLevel::Debug.emoji(), "🐛");
+        assert_eq!(LogLevel::Info.emoji(), "ℹ️");
+        assert_eq!(LogLevel::Success.emoji(), "✅");
+        assert_eq!(LogLevel::Warning.emoji(), "⚠️");
+        assert_eq!(LogLevel::Error.emoji(), "❌");
+        assert_eq!(LogLevel::Critical.emoji(), "💥");
+    }
+
+    #[test]
+    fn test_module_pattern_matching() {
+        let level = LogLevel::Info;
+
+        // Simple string matching
+        assert!(level.matches_module_pattern("my_app::module", "my_app"));
+        assert!(level.matches_module_pattern("my_app::module", "module"));
+        assert!(!level.matches_module_pattern("my_app::module", "other"));
+
+        // Glob pattern matching
+        assert!(level.matches_module_pattern("my_app::module", "my_app::*"));
+        assert!(level.matches_module_pattern("my_app::module", "*::module"));
+        assert!(!level.matches_module_pattern("my_app::module", "other::*"));
+    }
+
+    #[test]
+    fn test_serialization() {
+        let level = LogLevel::Info;
+        let serialized = serde_json::to_string(&level).unwrap();
+        assert_eq!(serialized, "\"Info\"");
+
+        let deserialized: LogLevel = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, level);
     }
 }

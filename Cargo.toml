@@ -30,6 +30,8 @@ colored = "2.0"
 rand = "0.8"
 crossbeam-channel = "0.5.15"
 log = "0.4.27"
+regex = "1.10.2"
+
 
 [dev-dependencies]
 criterion = "0.5"
