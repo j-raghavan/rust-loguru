@@ -88,8 +88,13 @@ impl LogLevel {
         if pattern.contains('*') {
             // Simple glob pattern matching
             let pattern = pattern.replace('*', ".*");
-            let regex = regex::Regex::new(&format!("^{}$", pattern)).unwrap();
-            regex.is_match(module_path)
+            match regex::Regex::new(&format!("^{}$", pattern)) {
+                Ok(regex) => regex.is_match(module_path),
+                Err(_) => {
+                    eprintln!("Invalid regex pattern: {}", pattern);
+                    false
+                }
+            }
         } else {
             // Simple string matching
             module_path.contains(pattern)
