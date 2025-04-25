@@ -1,10 +1,22 @@
 use lazy_static::lazy_static;
 use parking_lot::RwLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::handler::Handler;
 use crate::level::LogLevel;
 use crate::record::Record;
+use crate::AsyncLoggerBuilder;
+use crate::AsyncLoggerHandle;
+
+/// Debug print macro that only prints when the debug_logging feature is enabled
+#[macro_export]
+macro_rules! debug_println {
+    ($($arg:tt)*) => {
+        #[cfg(feature = "debug_logging")]
+        println!($($arg)*);
+    };
+}
 
 /// A logger that can handle log records
 #[derive(Debug, Clone)]
@@ -13,6 +25,12 @@ pub struct Logger {
     level: LogLevel,
     /// The handlers
     handlers: Vec<Arc<RwLock<dyn Handler>>>,
+    /// Whether async logging is enabled
+    async_mode: bool,
+    /// The async logger handle
+    async_handle: Option<AsyncLoggerHandle>,
+    /// Whether the logger is active
+    active: Arc<AtomicBool>,
 }
 
 impl Logger {
@@ -21,6 +39,9 @@ impl Logger {
         Self {
             level,
             handlers: Vec::new(),
+            async_mode: false,
+            async_handle: None,
+            active: Arc::new(AtomicBool::new(true)),
         }
     }
 
@@ -47,23 +68,101 @@ impl Logger {
         self
     }
 
+    /// Enable or disable async logging
+    pub fn set_async(&mut self, enable: bool, queue_size: Option<usize>) -> &mut Self {
+        // Don't make any changes if already in the requested state
+        if self.async_mode == enable {
+            return self;
+        }
+
+        if enable {
+            // Create a new async logger if needed
+            let builder = AsyncLoggerBuilder::new()
+                .with_queue_size(queue_size.unwrap_or(10000))
+                .with_handlers(self.handlers.clone())
+                .with_level(self.level);
+
+            self.async_handle = Some(builder.build());
+            self.async_mode = true;
+        } else {
+            // Shut down the async logger
+            if let Some(handle) = self.async_handle.take() {
+                handle.shutdown();
+            }
+            self.async_mode = false;
+        }
+
+        self
+    }
+
+    /// Set the number of worker threads for async logging
+    pub fn set_worker_threads(&mut self, count: usize) -> &mut Self {
+        if self.async_mode && self.async_handle.is_some() {
+            // Recreate the async logger with the new worker count
+            self.set_async(false, None);
+            let builder = AsyncLoggerBuilder::new()
+                .with_queue_size(10000)
+                .with_handlers(self.handlers.clone())
+                .with_level(self.level)
+                .with_workers(count);
+
+            self.async_handle = Some(builder.build());
+            self.async_mode = true;
+        }
+        self
+    }
+
     /// Log a record
     pub fn log(&self, record: &Record) -> bool {
-        if record.level() < self.level {
+        // Runtime checks for level and whether logger is active
+        if record.level() < self.level || !self.active.load(Ordering::Relaxed) {
             return false;
         }
 
-        let mut any_handled = false;
-        for handler in &self.handlers {
-            let mut guard = handler.write();
-            if guard.enabled() && record.level() >= guard.level() && guard.handle(record) {
-                any_handled = true;
+        // If async logging is enabled, dispatch to the async logger
+        if self.async_mode {
+            if let Some(handle) = &self.async_handle {
+                return handle.log(record.clone());
             }
         }
+
+        // Otherwise, log synchronously
+        self.log_sync(record)
+    }
+
+    /// Log a record synchronously
+    fn log_sync(&self, record: &Record) -> bool {
+        let mut any_handled = false;
+        debug_println!(
+            "log_sync: record level = {:?}, logger level = {:?}",
+            record.level(),
+            self.level
+        );
+        for handler in &self.handlers {
+            let mut guard = handler.write();
+            debug_println!(
+                "log_sync: handler enabled = {}, handler level = {:?}",
+                guard.enabled(),
+                guard.level()
+            );
+            if guard.enabled() && record.level() >= guard.level() {
+                debug_println!("log_sync: calling handle on handler");
+                if guard.handle(record) {
+                    debug_println!("log_sync: handler returned true");
+                    any_handled = true;
+                    break; // One successful handler is enough
+                } else {
+                    debug_println!("log_sync: handler returned false");
+                }
+            } else {
+                debug_println!("log_sync: skipping handler due to level/enabled check");
+            }
+        }
+        debug_println!("log_sync: returning {}", any_handled);
         any_handled
     }
 
-    /// Log a message at the given level
+    /// Log a message at the given level with fluent API
     pub fn log_message(&self, level: LogLevel, message: impl Into<String>) -> bool {
         let record = Record::new(level, message, None::<String>, None::<String>, None);
         self.log(&record)
@@ -87,6 +186,27 @@ impl Logger {
     /// Log an error message
     pub fn error(&self, message: impl Into<String>) -> bool {
         self.log_message(LogLevel::Error, message)
+    }
+
+    /// Enable or disable the logger
+    pub fn set_enabled(&self, enabled: bool) -> &Self {
+        self.active.store(enabled, Ordering::Relaxed);
+        self
+    }
+
+    /// Check if the logger is enabled
+    pub fn is_enabled(&self) -> bool {
+        self.active.load(Ordering::Relaxed)
+    }
+
+    /// Get all registered handlers
+    pub fn handlers(&self) -> &[Arc<RwLock<dyn Handler>>] {
+        &self.handlers
+    }
+
+    /// Check if async logging is enabled
+    pub fn is_async(&self) -> bool {
+        self.async_mode
     }
 }
 
@@ -207,5 +327,65 @@ mod tests {
         let logger = Logger::new(LogLevel::Info);
         let logger = init(logger);
         assert_eq!(logger.level(), LogLevel::Info);
+    }
+
+    #[test]
+    fn test_logger_enabled() {
+        let logger = Logger::new(LogLevel::Info);
+        assert!(logger.is_enabled());
+
+        logger.set_enabled(false);
+        assert!(!logger.is_enabled());
+
+        logger.set_enabled(true);
+        assert!(logger.is_enabled());
+    }
+
+    #[test]
+    fn test_async_logging() {
+        let mut logger = Logger::new(LogLevel::Info);
+        let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
+        logger.add_handler(handler);
+
+        // Test sync logging first
+        assert!(logger.info("Sync message"));
+        assert!(!logger.is_async());
+
+        // Enable async logging
+        logger.set_async(true, Some(1000));
+        assert!(logger.is_async());
+
+        // Test async logging
+        assert!(logger.info("Async message"));
+
+        // Test changing worker threads
+        logger.set_worker_threads(2);
+        assert!(logger.info("Message with 2 workers"));
+
+        // Disable async logging
+        logger.set_async(false, None);
+        assert!(!logger.is_async());
+
+        // Test sync logging again
+        assert!(logger.info("Sync message again"));
+    }
+
+    #[test]
+    fn test_compile_time_filtering() {
+        let logger = Logger::new(LogLevel::Info);
+
+        // This would be optimized out at compile time with feature flags
+        if !crate::compile_time_level_enabled!(LogLevel::Debug) {
+            assert!(!logger.debug("Debug message"));
+        }
+
+        // This would pass compile-time check and then be checked at runtime
+        if crate::compile_time_level_enabled!(LogLevel::Info) {
+            // Runtime check happens inside logger.log
+            let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Info)));
+            let mut logger = Logger::new(LogLevel::Info);
+            logger.add_handler(handler);
+            assert!(logger.info("Info message"));
+        }
     }
 }
