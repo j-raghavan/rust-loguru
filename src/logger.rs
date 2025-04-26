@@ -14,7 +14,11 @@ use crate::AsyncLoggerHandle;
 macro_rules! debug_println {
     ($($arg:tt)*) => {
         #[cfg(feature = "debug_logging")]
-        println!($($arg)*);
+        println!(
+            "log_sync: record level = {:?}, logger level = {:?}",
+            record.level(),
+            self.level
+        );
     };
 }
 
@@ -114,13 +118,7 @@ impl Logger {
 
     /// Log a record
     pub fn log(&self, record: &Record) -> bool {
-        println!(
-            "Logger::log - record level: {:?}, logger level: {:?}",
-            record.level(),
-            self.level
-        );
-        if self.level <= record.level() && self.active.load(Ordering::Relaxed) {
-            println!("Logger::log - record level >= logger level and logger is active");
+        if record.level() >= self.level() && self.active.load(Ordering::Relaxed) {
             // If async logging is enabled, dispatch to the async logger
             if self.async_mode {
                 if let Some(handle) = &self.async_handle {
@@ -131,38 +129,18 @@ impl Logger {
             // Otherwise, log synchronously
             return self.log_sync(record);
         }
-        println!("Logger::log - record level < logger level or logger not active");
         false
     }
 
     /// Log a record synchronously
     fn log_sync(&self, record: &Record) -> bool {
         let mut any_handled = false;
-        debug_println!(
-            "log_sync: record level = {:?}, logger level = {:?}",
-            record.level(),
-            self.level
-        );
         for handler in &self.handlers {
             let mut guard = handler.write();
-            debug_println!(
-                "log_sync: handler enabled = {}, handler level = {:?}",
-                guard.enabled(),
-                guard.level()
-            );
-            if guard.enabled() && record.level() >= guard.level() {
-                debug_println!("log_sync: calling handle on handler");
-                if guard.handle(record) {
-                    debug_println!("log_sync: handler returned true");
-                    any_handled = true;
-                } else {
-                    debug_println!("log_sync: handler returned false");
-                }
-            } else {
-                debug_println!("log_sync: skipping handler due to level/enabled check");
+            if guard.enabled() && record.level() >= guard.level() && guard.handle(record) {
+                any_handled = true;
             }
         }
-        debug_println!("log_sync: returning {}", any_handled);
         any_handled
     }
 

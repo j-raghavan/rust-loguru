@@ -41,11 +41,11 @@ jobs:
             ${{ runner.os }}-
 
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --verbose --test-threads=1
         continue-on-error: ${{ matrix.allow_failure }}
 
       - name: Run tests with all features
-        run: cargo test --all-features --verbose
+        run: cargo test --all-features --verbose --test-threads=1
         continue-on-error: ${{ matrix.allow_failure }}
 
       - name: Check formatting

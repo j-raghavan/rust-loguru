@@ -262,13 +262,12 @@ fn test_file_handler_write_error() -> io::Result<()> {
     let log_path = temp_dir.path().join("test.log");
     let mut handler = FileHandler::new(log_path.to_str().unwrap())?;
 
-    // Close the file handle before making it read-only
+    // Close the file handle
     handler.close();
 
-    // Make the file read-only
-    let mut perms = fs::metadata(&log_path)?.permissions();
-    perms.set_readonly(true);
-    fs::set_permissions(&log_path, perms)?;
+    fs::remove_file(&log_path)?;
+
+    fs::create_dir_all(&log_path)?;
 
     let record = Record::new(
         LogLevel::Info,
