@@ -19,6 +19,7 @@ fn test_trace_macro() {
     let _ = rust_loguru::init(logger);
 
     let result = trace!("Test trace message");
+    println!("Trace macro result: {}", result);
     assert!(result, "Trace macro should return true");
 }
 
@@ -84,6 +85,8 @@ fn test_critical_macro() {
 #[test]
 fn test_macro_formatting() {
     let logger = create_test_logger(LogLevel::Info);
+    println!("Logger level: {:?}", logger.level());
+    println!("Logger handlers count: {}", logger.handlers().len());
     let _ = rust_loguru::init(logger);
 
     // The issue might be with the format parameter - let's make sure the handler can process it

@@ -19,7 +19,7 @@ macro_rules! debug_println {
 }
 
 /// A logger that can handle log records
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Logger {
     /// The log level
     level: LogLevel,
@@ -114,8 +114,13 @@ impl Logger {
 
     /// Log a record
     pub fn log(&self, record: &Record) -> bool {
-        // Runtime checks for level and whether logger is active
+        println!(
+            "Logger::log - record level: {:?}, logger level: {:?}",
+            record.level(),
+            self.level
+        );
         if record.level() < self.level || !self.active.load(Ordering::Relaxed) {
+            println!("Logger::log - record level < logger level or logger not active");
             return false;
         }
 
@@ -150,7 +155,6 @@ impl Logger {
                 if guard.handle(record) {
                     debug_println!("log_sync: handler returned true");
                     any_handled = true;
-                    break; // One successful handler is enough
                 } else {
                     debug_println!("log_sync: handler returned false");
                 }
@@ -207,6 +211,18 @@ impl Logger {
     /// Check if async logging is enabled
     pub fn is_async(&self) -> bool {
         self.async_mode
+    }
+}
+
+impl Clone for Logger {
+    fn clone(&self) -> Self {
+        Self {
+            level: self.level,
+            handlers: self.handlers.clone(),
+            async_mode: self.async_mode,
+            async_handle: self.async_handle.clone(),
+            active: Arc::new(AtomicBool::new(self.active.load(Ordering::Relaxed))),
+        }
     }
 }
 

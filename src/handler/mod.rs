@@ -89,7 +89,19 @@ impl Handler for NullHandler {
     }
 
     fn handle(&mut self, record: &Record) -> bool {
-        self.enabled && record.level() >= self.level
+        println!(
+            "NullHandler::handle - record level: {:?}, handler level: {:?}",
+            record.level(),
+            self.level
+        );
+        if self.enabled && record.level() >= self.level {
+            println!("NullHandler::handle - handling record");
+            let _ = self.formatter.format(record);
+            true
+        } else {
+            println!("NullHandler::handle - skipping record");
+            false
+        }
     }
 }
 
