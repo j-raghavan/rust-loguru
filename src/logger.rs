@@ -119,20 +119,20 @@ impl Logger {
             record.level(),
             self.level
         );
-        if record.level() < self.level || !self.active.load(Ordering::Relaxed) {
-            println!("Logger::log - record level < logger level or logger not active");
-            return false;
-        }
-
-        // If async logging is enabled, dispatch to the async logger
-        if self.async_mode {
-            if let Some(handle) = &self.async_handle {
-                return handle.log(record.clone());
+        if self.level <= record.level() && self.active.load(Ordering::Relaxed) {
+            println!("Logger::log - record level >= logger level and logger is active");
+            // If async logging is enabled, dispatch to the async logger
+            if self.async_mode {
+                if let Some(handle) = &self.async_handle {
+                    return handle.log(record.clone());
+                }
             }
-        }
 
-        // Otherwise, log synchronously
-        self.log_sync(record)
+            // Otherwise, log synchronously
+            return self.log_sync(record);
+        }
+        println!("Logger::log - record level < logger level or logger not active");
+        false
     }
 
     /// Log a record synchronously
@@ -234,7 +234,14 @@ lazy_static! {
 /// Initialize the global logger
 pub fn init(logger: Logger) -> Logger {
     let mut global = GLOBAL_LOGGER.write();
-    *global = logger.clone();
+    global.set_level(logger.level());
+    global.set_enabled(logger.is_enabled());
+    // Clear existing handlers
+    global.handlers.clear();
+    // Add new handlers
+    for handler in logger.handlers() {
+        global.add_handler(handler.clone());
+    }
     logger
 }
 

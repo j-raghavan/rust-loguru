@@ -193,7 +193,9 @@ macro_rules! log_with_metadata {
             $(
                 record = record.with_metadata($key, $value);
             )+
-            $crate::log(&record)
+            let result = $crate::log(&record);
+            println!("Log with metadata result: {}", result);
+            result
         }
     };
 }

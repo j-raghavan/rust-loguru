@@ -9,6 +9,7 @@ use rust_loguru::handler::NullHandler;
 // Add this function to create a fresh logger for each test
 fn create_test_logger(level: LogLevel) -> Logger {
     let mut logger = Logger::new(level);
+    // Set handler level to Trace to allow all messages to pass through
     logger.add_handler(Arc::new(RwLock::new(NullHandler::new(level))));
     logger
 }
@@ -28,6 +29,12 @@ fn test_debug_macro() {
     let logger = create_test_logger(LogLevel::Debug);
     println!("Logger level: {:?}", logger.level());
     let _ = rust_loguru::init(logger);
+
+    // Add this line to verify the global logger level
+    println!(
+        "Global logger level: {:?}",
+        rust_loguru::global().read().level()
+    );
 
     let result = debug!("Test debug message");
     println!("Debug macro result: {}", result);
@@ -107,6 +114,7 @@ fn test_log_with_metadata() {
         "key2" => "value2";
         "Test message with metadata"
     );
+    println!("Log with metadata result: {}", result);
     assert!(result, "Metadata logging should return true");
 }
 
@@ -132,8 +140,21 @@ fn test_macro_source_location() {
 
 #[test]
 fn test_macro_level_filtering() {
-    let logger = create_test_logger(LogLevel::Warning);
+    // Create a logger with Warning level
+    let mut logger = Logger::new(LogLevel::Warning);
+
+    // Add a handler with the same level as the logger
+    let handler = Arc::new(RwLock::new(NullHandler::new(LogLevel::Warning)));
+    logger.add_handler(handler);
+
+    // Initialize the global logger
     let _ = rust_loguru::init(logger);
+
+    // Verify the global logger level
+    println!(
+        "Global logger level: {:?}",
+        rust_loguru::global().read().level()
+    );
 
     // Info message should be filtered out
     let result = info!("This should be filtered out");
@@ -141,6 +162,7 @@ fn test_macro_level_filtering() {
 
     // Warning message should pass through
     let result = warn!("This should be logged");
+    println!("Warning message result: {}", result);
     assert!(result, "Warning message should pass through");
 }
 
