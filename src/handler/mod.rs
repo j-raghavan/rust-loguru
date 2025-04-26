@@ -89,7 +89,12 @@ impl Handler for NullHandler {
     }
 
     fn handle(&mut self, record: &Record) -> bool {
-        self.enabled && record.level() >= self.level
+        if self.enabled && record.level() >= self.level {
+            let _ = self.formatter.format(record);
+            true
+        } else {
+            false
+        }
     }
 }
 

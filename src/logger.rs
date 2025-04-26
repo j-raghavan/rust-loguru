@@ -14,12 +14,16 @@ use crate::AsyncLoggerHandle;
 macro_rules! debug_println {
     ($($arg:tt)*) => {
         #[cfg(feature = "debug_logging")]
-        println!($($arg)*);
+        println!(
+            "log_sync: record level = {:?}, logger level = {:?}",
+            record.level(),
+            self.level
+        );
     };
 }
 
 /// A logger that can handle log records
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Logger {
     /// The log level
     level: LogLevel,
@@ -114,51 +118,29 @@ impl Logger {
 
     /// Log a record
     pub fn log(&self, record: &Record) -> bool {
-        // Runtime checks for level and whether logger is active
-        if record.level() < self.level || !self.active.load(Ordering::Relaxed) {
-            return false;
-        }
-
-        // If async logging is enabled, dispatch to the async logger
-        if self.async_mode {
-            if let Some(handle) = &self.async_handle {
-                return handle.log(record.clone());
+        if record.level() >= self.level() && self.active.load(Ordering::Relaxed) {
+            // If async logging is enabled, dispatch to the async logger
+            if self.async_mode {
+                if let Some(handle) = &self.async_handle {
+                    return handle.log(record.clone());
+                }
             }
-        }
 
-        // Otherwise, log synchronously
-        self.log_sync(record)
+            // Otherwise, log synchronously
+            return self.log_sync(record);
+        }
+        false
     }
 
     /// Log a record synchronously
     fn log_sync(&self, record: &Record) -> bool {
         let mut any_handled = false;
-        debug_println!(
-            "log_sync: record level = {:?}, logger level = {:?}",
-            record.level(),
-            self.level
-        );
         for handler in &self.handlers {
             let mut guard = handler.write();
-            debug_println!(
-                "log_sync: handler enabled = {}, handler level = {:?}",
-                guard.enabled(),
-                guard.level()
-            );
-            if guard.enabled() && record.level() >= guard.level() {
-                debug_println!("log_sync: calling handle on handler");
-                if guard.handle(record) {
-                    debug_println!("log_sync: handler returned true");
-                    any_handled = true;
-                    break; // One successful handler is enough
-                } else {
-                    debug_println!("log_sync: handler returned false");
-                }
-            } else {
-                debug_println!("log_sync: skipping handler due to level/enabled check");
+            if guard.enabled() && record.level() >= guard.level() && guard.handle(record) {
+                any_handled = true;
             }
         }
-        debug_println!("log_sync: returning {}", any_handled);
         any_handled
     }
 
@@ -210,6 +192,18 @@ impl Logger {
     }
 }
 
+impl Clone for Logger {
+    fn clone(&self) -> Self {
+        Self {
+            level: self.level,
+            handlers: self.handlers.clone(),
+            async_mode: self.async_mode,
+            async_handle: self.async_handle.clone(),
+            active: Arc::new(AtomicBool::new(self.active.load(Ordering::Relaxed))),
+        }
+    }
+}
+
 lazy_static! {
     /// The global logger instance.
     static ref GLOBAL_LOGGER: RwLock<Logger> = RwLock::new(Logger::new(LogLevel::Info));
@@ -218,7 +212,14 @@ lazy_static! {
 /// Initialize the global logger
 pub fn init(logger: Logger) -> Logger {
     let mut global = GLOBAL_LOGGER.write();
-    *global = logger.clone();
+    global.set_level(logger.level());
+    global.set_enabled(logger.is_enabled());
+    // Clear existing handlers
+    global.handlers.clear();
+    // Add new handlers
+    for handler in logger.handlers() {
+        global.add_handler(handler.clone());
+    }
     logger
 }
 

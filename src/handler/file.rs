@@ -201,7 +201,7 @@ impl Handler for FileHandler {
             return false;
         }
 
-        // Rotate if needed
+        // Rotate the file if needed
         if self.rotate_if_needed().is_err() {
             return false;
         }
