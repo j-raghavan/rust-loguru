@@ -274,7 +274,6 @@ mod tests {
         assert!(output.contents().contains("INFO - Test message"));
     }
 
-
     #[test]
     fn test_console_handler_metadata() {
         let output = TestOutput::new();
