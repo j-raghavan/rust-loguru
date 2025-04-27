@@ -37,7 +37,7 @@ jobs:
         run: cargo build --release
 
       - name: Test
-        run: cargo test --release
+        run: cargo test --release -- --test-threads=1
 
   create-release:
     name: Create GitHub Release
