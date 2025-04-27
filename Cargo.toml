@@ -32,11 +32,13 @@ crossbeam-channel = "0.5.15"
 log = "0.4.27"
 regex = "1.10.2"
 flate2 = "1.0"
+toml = "0.8.21"
 
 
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3.8"
+
 
 [[example]]
 name = "api_usage"

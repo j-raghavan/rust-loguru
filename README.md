@@ -167,6 +167,46 @@ let config = LoggerConfig::development();
 let config = LoggerConfig::production();
 ```
 
+### Using TOML Configuration Files
+
+You can load logger configuration from a TOML file or string. This is useful for externalizing configuration and making it easy to adjust logging without code changes.
+
+**Example TOML file (`loguru_config.toml`):**
+```toml
+level = "Debug"
+capture_source = true
+use_colors = false
+format = "[TOML] {level} {message}"
+```
+
+**Loading from a TOML file:**
+```rust
+use rust_loguru::config::LoggerConfigBuilder;
+
+let config = LoggerConfigBuilder::new()
+    .from_toml_file("loguru_config.toml")
+    .unwrap()
+    .build();
+```
+
+**Loading from a TOML string:**
+```rust
+use rust_loguru::config::LoggerConfigBuilder;
+
+let toml = r#"
+level = "Info"
+use_colors = true
+"#;
+let config = LoggerConfigBuilder::new()
+    .from_toml_str(toml)
+    .unwrap()
+    .build();
+```
+
+**Precedence:**
+- Values set via builder methods or environment variables will override those loaded from TOML.
+- Supported TOML keys: `level`, `capture_source`, `use_colors`, `format`.
+
 ### Scopes and Timed Execution
 
 Rust-Loguru provides a `ScopeGuard` utility for measuring the duration of code blocks and managing indentation for nested scopes. This is useful for profiling, debugging, and structured logging of code execution.
