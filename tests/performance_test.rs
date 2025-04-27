@@ -6,41 +6,41 @@
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use parking_lot::RwLock;
+use rust_loguru::formatters::Formatter;
+use rust_loguru::handler::Handler;
 use rust_loguru::handler::NullHandler;
-use rust_loguru::{Handler, LogLevel, Logger, Record};
-// use std::fs::File;
-// use std::io::{self, Write};
+use rust_loguru::level::LogLevel;
+use rust_loguru::logger::Logger;
+use rust_loguru::record::Record;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Custom counting handler for benchmarks
 #[derive(Debug)]
 struct CountingHandler {
+    count: AtomicUsize,
     level: LogLevel,
     enabled: bool,
-    count: Arc<AtomicUsize>,
-    formatter: rust_loguru::formatter::Formatter,
+    formatter: Formatter,
 }
 
 impl CountingHandler {
     fn new(level: LogLevel) -> Self {
         Self {
+            count: AtomicUsize::new(0),
             level,
             enabled: true,
-            count: Arc::new(AtomicUsize::new(0)),
-            formatter: rust_loguru::formatter::Formatter::default(),
+            formatter: Formatter::text(),
         }
     }
+
+    // fn count(&self) -> usize {
+    //     self.count.load(Ordering::Relaxed)
+    // }
 }
 
 impl Handler for CountingHandler {
-    fn handle(&mut self, _record: &Record) -> bool {
-        self.count.fetch_add(1, Ordering::SeqCst);
-        true
-    }
-
     fn level(&self) -> LogLevel {
         self.level
     }
@@ -49,7 +49,7 @@ impl Handler for CountingHandler {
         self.level = level;
     }
 
-    fn enabled(&self) -> bool {
+    fn is_enabled(&self) -> bool {
         self.enabled
     }
 
@@ -57,12 +57,17 @@ impl Handler for CountingHandler {
         self.enabled = enabled;
     }
 
-    fn formatter(&self) -> &rust_loguru::formatter::Formatter {
+    fn formatter(&self) -> &Formatter {
         &self.formatter
     }
 
-    fn set_formatter(&mut self, formatter: rust_loguru::formatter::Formatter) {
+    fn set_formatter(&mut self, formatter: Formatter) {
         self.formatter = formatter;
+    }
+
+    fn handle(&self, _record: &Record) -> Result<(), String> {
+        self.count.fetch_add(1, Ordering::Relaxed);
+        Ok(())
     }
 }
 

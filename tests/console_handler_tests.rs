@@ -1,3 +1,4 @@
+use rust_loguru::formatters::Formatter;
 use rust_loguru::handler::console::ConsoleHandler;
 use rust_loguru::handler::Handler;
 use rust_loguru::level::LogLevel;
@@ -43,15 +44,15 @@ impl TestOutput {
 
 #[test]
 fn test_console_handler_creation() {
-    let handler = ConsoleHandler::new();
+    let handler = ConsoleHandler::stdout(LogLevel::Info);
     assert_eq!(handler.level(), LogLevel::Info);
-    assert!(handler.enabled());
+    assert!(handler.is_enabled());
 }
 
 #[test]
 fn test_console_handler_level_filtering() {
-    let mut handler = ConsoleHandler::new();
-    handler.set_level(LogLevel::Warning);
+    let output = TestOutput::new();
+    let handler = ConsoleHandler::with_writer(LogLevel::Warning, Box::new(output.clone()));
 
     let info_record = Record::new(
         LogLevel::Info,
@@ -68,17 +69,21 @@ fn test_console_handler_level_filtering() {
         Some(42),
     );
 
-    assert!(!handler.handle(&info_record));
-    assert!(handler.handle(&warning_record));
+    assert!(handler.handle(&info_record).is_ok());
+    assert!(handler.handle(&warning_record).is_ok());
+
+    let contents = output.contents();
+    assert!(!contents.contains("info message"));
+    assert!(contents.contains("warning message"));
 }
 
 #[test]
 fn test_console_handler_enable_disable() {
-    let mut handler = ConsoleHandler::new();
-    assert!(handler.enabled());
+    let mut handler = ConsoleHandler::stdout(LogLevel::Info);
+    assert!(handler.is_enabled());
 
     handler.set_enabled(false);
-    assert!(!handler.enabled());
+    assert!(!handler.is_enabled());
 
     let record = Record::new(
         LogLevel::Info,
@@ -87,21 +92,15 @@ fn test_console_handler_enable_disable() {
         Some("test.rs".to_string()),
         Some(42),
     );
-    assert!(!handler.handle(&record));
+    assert!(handler.handle(&record).is_ok());
 }
 
 #[test]
 fn test_console_handler_colors() {
-    let mut handler = ConsoleHandler::new();
-    assert!(handler.formatter().use_colors);
+    let output = TestOutput::new();
 
-    handler.set_formatter(handler.formatter().clone().with_colors(false));
-    assert!(!handler.formatter().use_colors);
-}
-
-#[test]
-fn test_console_handler_formatting() {
-    let handler = ConsoleHandler::new();
+    // Test with colors enabled (default)
+    let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()));
     let record = Record::new(
         LogLevel::Error,
         "test message",
@@ -109,18 +108,27 @@ fn test_console_handler_formatting() {
         Some("test.rs".to_string()),
         Some(42),
     );
+    assert!(handler.handle(&record).is_ok());
+    let colored_output = output.contents();
 
-    let formatted = handler.formatter().format(&record);
-    assert!(formatted.contains("ERROR"));
-    assert!(formatted.contains("test.rs:42"));
-    assert!(formatted.contains("test message"));
+    // Test with colors disabled
+    let output = TestOutput::new();
+    let handler =
+        ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone())).with_colors(false);
+    assert!(handler.handle(&record).is_ok());
+    let plain_output = output.contents();
+
+    // The colored output should be different from the plain output
+    // due to ANSI color codes
+    assert_ne!(colored_output, plain_output);
 }
 
 #[test]
-fn test_console_handler_with_custom_format() -> io::Result<()> {
+fn test_console_handler_formatting() {
     let output = TestOutput::new();
-    let mut handler = ConsoleHandler::with_writer(Box::new(output.clone()))
-        .with_format(|record| format!("CUSTOM: {}", record.message()));
+    let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()))
+        .with_formatter(Formatter::text().with_pattern("{level} - {message}"))
+        .with_colors(false);
 
     let record = Record::new(
         LogLevel::Info,
@@ -130,15 +138,15 @@ fn test_console_handler_with_custom_format() -> io::Result<()> {
         Some(42),
     );
 
-    assert!(handler.handle(&record));
-    assert!(output.contents().contains("CUSTOM: Test message"));
-    Ok(())
+    assert!(handler.handle(&record).is_ok());
+    let contents = output.contents();
+    assert!(contents.contains("INFO - Test message"));
 }
 
 #[test]
 fn test_console_handler_with_metadata() -> io::Result<()> {
     let output = TestOutput::new();
-    let mut handler = ConsoleHandler::with_writer(Box::new(output.clone()));
+    let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()));
 
     let record = Record::new(
         LogLevel::Info,
@@ -146,26 +154,23 @@ fn test_console_handler_with_metadata() -> io::Result<()> {
         Some("test".to_string()),
         Some("test.rs".to_string()),
         Some(42),
-    );
+    )
+    .with_metadata("key1", "value1")
+    .with_metadata("key2", "value2");
 
-    assert!(handler.handle(&record));
+    assert!(handler.handle(&record).is_ok());
     let output = output.contents();
-    assert!(output.contains("INFO"));
-    assert!(output.contains("Test message"));
+    assert!(output.contains("key1=value1"));
+    assert!(output.contains("key2=value2"));
     Ok(())
 }
 
 #[test]
 fn test_console_handler_with_json_format() -> io::Result<()> {
     let output = TestOutput::new();
-    let mut handler = ConsoleHandler::with_writer(Box::new(output.clone())).with_format(|record| {
-        format!(
-            r#"{{"level":"{}","message":"{}","module":"{}"}}"#,
-            record.level(),
-            record.message(),
-            record.module()
-        )
-    });
+    let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()))
+        .with_pattern(r#"{{"level":"{level}","message":"{message}","module":"{module}"}}"#)
+        .with_colors(false);
 
     let record = Record::new(
         LogLevel::Info,
@@ -175,10 +180,35 @@ fn test_console_handler_with_json_format() -> io::Result<()> {
         Some(42),
     );
 
-    assert!(handler.handle(&record));
+    assert!(handler.handle(&record).is_ok());
     let output = output.contents();
     assert!(output.contains(r#""level":"INFO""#));
     assert!(output.contains(r#""message":"Test message""#));
     assert!(output.contains(r#""module":"test""#));
     Ok(())
+}
+
+#[test]
+fn test_console_handler_structured_data() {
+    let output = TestOutput::new();
+    // Using Text formatter with JSON-like pattern
+    let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()))
+        .with_formatter(
+            Formatter::json()
+                .with_pattern(r#"{"level":"{level}","message":"{message}","module":"{module}"}"#),
+        );
+
+    let record = Record::new(
+        LogLevel::Info,
+        "Test message",
+        Some("test".to_string()),
+        Some("test.rs".to_string()),
+        Some(42),
+    );
+
+    assert!(handler.handle(&record).is_ok());
+    let contents = output.contents();
+    assert!(contents.contains(r#""level":"INFO""#));
+    assert!(contents.contains(r#""message":"Test message""#));
+    assert!(contents.contains(r#""module":"test""#));
 }

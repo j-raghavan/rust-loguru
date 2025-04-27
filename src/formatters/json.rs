@@ -1,19 +1,16 @@
 use crate::formatters::FormatterTrait;
-use crate::level::LogLevel;
 use crate::record::Record;
 use chrono::Local;
-use colored::*;
+use serde_json::json;
 use std::fmt;
 use std::sync::Arc;
 
 /// A type alias for a format function
 pub type FormatFn = Arc<dyn Fn(&Record) -> String + Send + Sync>;
 
-/// A text formatter that formats log records as text
+/// A JSON formatter that formats log records as JSON
 #[derive(Clone)]
-pub struct TextFormatter {
-    /// Whether to use colors in the output
-    use_colors: bool,
+pub struct JsonFormatter {
     /// Whether to include timestamps in the output
     include_timestamp: bool,
     /// Whether to include log levels in the output
@@ -28,10 +25,9 @@ pub struct TextFormatter {
     format_fn: Option<FormatFn>,
 }
 
-impl fmt::Debug for TextFormatter {
+impl fmt::Debug for JsonFormatter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TextFormatter")
-            .field("use_colors", &self.use_colors)
+        f.debug_struct("JsonFormatter")
             .field("include_timestamp", &self.include_timestamp)
             .field("include_level", &self.include_level)
             .field("include_module", &self.include_module)
@@ -42,10 +38,9 @@ impl fmt::Debug for TextFormatter {
     }
 }
 
-impl Default for TextFormatter {
+impl Default for JsonFormatter {
     fn default() -> Self {
         Self {
-            use_colors: true,
             include_timestamp: true,
             include_level: true,
             include_module: true,
@@ -56,61 +51,103 @@ impl Default for TextFormatter {
     }
 }
 
-impl FormatterTrait for TextFormatter {
+impl JsonFormatter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl FormatterTrait for JsonFormatter {
     fn format(&self, record: &Record) -> String {
         if let Some(format_fn) = &self.format_fn {
             return format_fn(record);
         }
 
-        let mut output = self.pattern.clone();
+        // If a custom pattern is provided and it's not the default pattern, use it
+        if self.pattern != "{timestamp} {level} {module} {location} {message}" {
+            let mut result = self.pattern.clone();
 
-        if self.include_timestamp {
-            let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-            output = output.replace("{timestamp}", &timestamp.to_string());
-        } else {
-            output = output.replace("{timestamp}", "");
-        }
-
-        if self.include_level {
-            let level = record.level().to_string();
-            if self.use_colors {
-                let colored_level = match record.level() {
-                    LogLevel::Error => level.red().to_string(),
-                    LogLevel::Warning => level.yellow().to_string(),
-                    LogLevel::Info => level.green().to_string(),
-                    LogLevel::Debug => level.blue().to_string(),
-                    LogLevel::Trace => level.cyan().to_string(),
-                    LogLevel::Success => level.green().to_string(),
-                    LogLevel::Critical => level.red().to_string(),
-                };
-                output = output.replace("{level}", &colored_level);
+            // Replace placeholders with JSON-formatted values
+            if self.include_level {
+                result = result.replace("{level}", &record.level().to_string());
             } else {
-                output = output.replace("{level}", &level);
+                result = result.replace("{level}", "");
+            }
+
+            if self.include_module {
+                result = result.replace("{module}", record.module());
+            } else {
+                result = result.replace("{module}", "");
+            }
+
+            if self.include_location {
+                result = result.replace(
+                    "{location}",
+                    &format!("{}:{}", record.file(), record.line()),
+                );
+            } else {
+                result = result.replace("{location}", "");
+            }
+
+            if self.include_timestamp {
+                let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                result = result.replace("{timestamp}", &timestamp.to_string());
+            } else {
+                result = result.replace("{timestamp}", "");
+            }
+
+            result = result.replace("{message}", record.message());
+
+            // Ensure newline at end
+            if result.ends_with('\n') {
+                result.to_string()
+            } else {
+                format!("{}\n", result)
             }
         } else {
-            output = output.replace("{level}", "");
+            // Use default JSON formatting
+            let mut json = serde_json::Map::new();
+
+            if self.include_timestamp {
+                let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                json.insert("timestamp".to_string(), json!(timestamp.to_string()));
+            }
+
+            if self.include_level {
+                json.insert("level".to_string(), json!(record.level().to_string()));
+            }
+
+            if self.include_module {
+                json.insert("module".to_string(), json!(record.module()));
+            }
+
+            if self.include_location {
+                json.insert(
+                    "location".to_string(),
+                    json!(format!("{}:{}", record.file(), record.line())),
+                );
+            }
+
+            json.insert("message".to_string(), json!(record.message()));
+
+            // Add any metadata
+            for (key, value) in record.metadata() {
+                json.insert(key.to_string(), json!(value));
+            }
+
+            // Add any structured data
+            for (key, value) in record.context() {
+                json.insert(key.to_string(), value.clone());
+            }
+
+            format!(
+                "{}\n",
+                serde_json::to_string(&json).unwrap_or_else(|_| "{}".to_string())
+            )
         }
-
-        if self.include_module {
-            output = output.replace("{module}", record.module());
-        } else {
-            output = output.replace("{module}", "");
-        }
-
-        if self.include_location {
-            let location = format!("{}:{}", record.file(), record.line());
-            output = output.replace("{location}", &location);
-        } else {
-            output = output.replace("{location}", "");
-        }
-
-        output = output.replace("{message}", record.message());
-
-        output.trim().to_string()
     }
 
-    fn with_colors(mut self, use_colors: bool) -> Self {
-        self.use_colors = use_colors;
+    fn with_colors(self, _use_colors: bool) -> Self {
         self
     }
 
@@ -149,7 +186,6 @@ impl FormatterTrait for TextFormatter {
 
     fn box_clone(&self) -> Box<dyn FormatterTrait + Send + Sync> {
         Box::new(Self {
-            use_colors: self.use_colors,
             include_timestamp: self.include_timestamp,
             include_level: self.include_level,
             include_module: self.include_module,
@@ -166,8 +202,8 @@ mod tests {
     use crate::level::LogLevel;
 
     #[test]
-    fn test_text_formatter_default() {
-        let formatter = TextFormatter::default();
+    fn test_json_formatter_default() {
+        let formatter = JsonFormatter::default();
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -184,8 +220,8 @@ mod tests {
     }
 
     #[test]
-    fn test_text_formatter_no_colors() {
-        let formatter = TextFormatter::default().with_colors(false);
+    fn test_json_formatter_no_timestamp() {
+        let formatter = JsonFormatter::default().with_timestamp(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -199,31 +235,12 @@ mod tests {
         assert!(formatted.contains("INFO"));
         assert!(formatted.contains("test"));
         assert!(formatted.contains("test.rs:42"));
-        assert!(!formatted.contains("\x1b["));
+        assert!(!formatted.contains("timestamp"));
     }
 
     #[test]
-    fn test_text_formatter_no_timestamp() {
-        let formatter = TextFormatter::default().with_timestamp(false);
-        let record = Record::new(
-            LogLevel::Info,
-            "Test message",
-            Some("test".to_string()),
-            Some("test.rs".to_string()),
-            Some(42),
-        );
-
-        let formatted = formatter.format(&record);
-        assert!(formatted.contains("Test message"));
-        assert!(formatted.contains("INFO"));
-        assert!(formatted.contains("test"));
-        assert!(formatted.contains("test.rs:42"));
-        assert!(!formatted.contains("2023")); // No year in timestamp
-    }
-
-    #[test]
-    fn test_text_formatter_no_level() {
-        let formatter = TextFormatter::default().with_level(false);
+    fn test_json_formatter_no_level() {
+        let formatter = JsonFormatter::default().with_level(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -240,8 +257,8 @@ mod tests {
     }
 
     #[test]
-    fn test_text_formatter_no_module() {
-        let formatter = TextFormatter::default().with_module(false);
+    fn test_json_formatter_no_module() {
+        let formatter = JsonFormatter::default().with_module(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -258,8 +275,8 @@ mod tests {
     }
 
     #[test]
-    fn test_text_formatter_no_location() {
-        let formatter = TextFormatter::default().with_location(false);
+    fn test_json_formatter_no_location() {
+        let formatter = JsonFormatter::default().with_location(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -276,9 +293,9 @@ mod tests {
     }
 
     #[test]
-    fn test_text_formatter_custom_format() {
+    fn test_json_formatter_custom_format() {
         let formatter =
-            TextFormatter::default().with_format(|record| format!("CUSTOM: {}", record.message()));
+            JsonFormatter::default().with_format(|record| format!("CUSTOM: {}", record.message()));
         let record = Record::new(
             LogLevel::Info,
             "Test message",

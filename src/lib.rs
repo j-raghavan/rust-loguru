@@ -47,6 +47,7 @@
 
 pub mod config;
 pub mod formatter;
+pub mod formatters;
 pub mod handler;
 pub mod level;
 pub mod logger;
@@ -55,7 +56,10 @@ pub mod macros;
 pub mod record;
 
 pub use config::{LoggerConfig, LoggerConfigBuilder};
-pub use formatter::Formatter;
+pub use formatters::json::JsonFormatter;
+pub use formatters::template::TemplateFormatter;
+pub use formatters::text::TextFormatter;
+pub use formatters::FormatterTrait;
 pub use handler::Handler;
 pub use level::LogLevel;
 pub use logger::{global, init, log, Logger};
@@ -206,8 +210,8 @@ impl AsyncLoggerBuilder {
                     // Process the record
                     if record.level() >= level {
                         for handler in &handlers {
-                            let mut guard = handler.write();
-                            if guard.enabled() && record.level() >= guard.level() {
+                            let guard = handler.write();
+                            if guard.is_enabled() && record.level() >= guard.level() {
                                 let _ = guard.handle(&record);
                             }
                         }

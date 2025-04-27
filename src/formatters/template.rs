@@ -1,17 +1,18 @@
-use crate::formatters::FormatterTrait;
-use crate::level::LogLevel;
-use crate::record::Record;
 use chrono::Local;
 use colored::*;
 use std::fmt;
 use std::sync::Arc;
 
+use crate::formatters::FormatterTrait;
+use crate::level::LogLevel;
+use crate::record::Record;
+
 /// A type alias for a format function
 pub type FormatFn = Arc<dyn Fn(&Record) -> String + Send + Sync>;
 
-/// A text formatter that formats log records as text
+/// A template formatter that formats log records using a template
 #[derive(Clone)]
-pub struct TextFormatter {
+pub struct TemplateFormatter {
     /// Whether to use colors in the output
     use_colors: bool,
     /// Whether to include timestamps in the output
@@ -28,9 +29,9 @@ pub struct TextFormatter {
     format_fn: Option<FormatFn>,
 }
 
-impl fmt::Debug for TextFormatter {
+impl fmt::Debug for TemplateFormatter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TextFormatter")
+        f.debug_struct("TemplateFormatter")
             .field("use_colors", &self.use_colors)
             .field("include_timestamp", &self.include_timestamp)
             .field("include_level", &self.include_level)
@@ -42,7 +43,7 @@ impl fmt::Debug for TextFormatter {
     }
 }
 
-impl Default for TextFormatter {
+impl Default for TemplateFormatter {
     fn default() -> Self {
         Self {
             use_colors: true,
@@ -56,7 +57,13 @@ impl Default for TextFormatter {
     }
 }
 
-impl FormatterTrait for TextFormatter {
+impl TemplateFormatter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl FormatterTrait for TemplateFormatter {
     fn format(&self, record: &Record) -> String {
         if let Some(format_fn) = &self.format_fn {
             return format_fn(record);
@@ -106,7 +113,15 @@ impl FormatterTrait for TextFormatter {
 
         output = output.replace("{message}", record.message());
 
-        output.trim().to_string()
+        // Clean up any extra spaces
+        output = output.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        // Ensure the output has a newline at the end
+        if !output.ends_with('\n') {
+            format!("{}\n", output.trim())
+        } else {
+            output.trim().to_string()
+        }
     }
 
     fn with_colors(mut self, use_colors: bool) -> Self {
@@ -136,6 +151,11 @@ impl FormatterTrait for TextFormatter {
 
     fn with_pattern(mut self, pattern: impl Into<String>) -> Self {
         self.pattern = pattern.into();
+        // Update the internal flags based on the pattern content
+        self.include_timestamp = self.pattern.contains("{timestamp}");
+        self.include_level = self.pattern.contains("{level}");
+        self.include_module = self.pattern.contains("{module}");
+        self.include_location = self.pattern.contains("{location}");
         self
     }
 
@@ -163,11 +183,10 @@ impl FormatterTrait for TextFormatter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::level::LogLevel;
 
     #[test]
-    fn test_text_formatter_default() {
-        let formatter = TextFormatter::default();
+    fn test_template_formatter_default() {
+        let formatter = TemplateFormatter::default();
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -184,8 +203,8 @@ mod tests {
     }
 
     #[test]
-    fn test_text_formatter_no_colors() {
-        let formatter = TextFormatter::default().with_colors(false);
+    fn test_template_formatter_no_colors() {
+        let formatter = TemplateFormatter::default().with_colors(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -203,8 +222,8 @@ mod tests {
     }
 
     #[test]
-    fn test_text_formatter_no_timestamp() {
-        let formatter = TextFormatter::default().with_timestamp(false);
+    fn test_template_formatter_no_timestamp() {
+        let formatter = TemplateFormatter::default().with_timestamp(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -222,8 +241,8 @@ mod tests {
     }
 
     #[test]
-    fn test_text_formatter_no_level() {
-        let formatter = TextFormatter::default().with_level(false);
+    fn test_template_formatter_no_level() {
+        let formatter = TemplateFormatter::default().with_level(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -240,8 +259,8 @@ mod tests {
     }
 
     #[test]
-    fn test_text_formatter_no_module() {
-        let formatter = TextFormatter::default().with_module(false);
+    fn test_template_formatter_no_module() {
+        let formatter = TemplateFormatter::default().with_module(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -258,8 +277,8 @@ mod tests {
     }
 
     #[test]
-    fn test_text_formatter_no_location() {
-        let formatter = TextFormatter::default().with_location(false);
+    fn test_template_formatter_no_location() {
+        let formatter = TemplateFormatter::default().with_location(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -276,9 +295,9 @@ mod tests {
     }
 
     #[test]
-    fn test_text_formatter_custom_format() {
-        let formatter =
-            TextFormatter::default().with_format(|record| format!("CUSTOM: {}", record.message()));
+    fn test_template_formatter_custom_format() {
+        let formatter = TemplateFormatter::default()
+            .with_format(|record| format!("CUSTOM: {}", record.message()));
         let record = Record::new(
             LogLevel::Info,
             "Test message",

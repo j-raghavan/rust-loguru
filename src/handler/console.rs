@@ -1,6 +1,8 @@
+use std::fmt;
 use std::io::{self, Write};
+use std::sync::Mutex;
 
-use crate::formatter::Formatter;
+use crate::formatters::Formatter;
 use crate::level::LogLevel;
 use crate::record::Record;
 
@@ -8,21 +10,21 @@ use super::Handler;
 
 /// A wrapper around a writer that implements Debug
 pub struct DebugWrite {
-    writer: Box<dyn Write + Send + Sync>,
+    writer: Mutex<Box<dyn Write + Send + Sync>>,
 }
 
-impl std::fmt::Debug for DebugWrite {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for DebugWrite {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DebugWrite")
-            .field("writer", &"<dyn Write>")
+            .field("writer", &"<writer>")
             .finish()
     }
 }
 
-/// A handler that writes log records to the console.
+/// A handler that writes to the console
 #[derive(Debug)]
 pub struct ConsoleHandler {
-    /// The minimum log level to handle
+    /// The log level
     level: LogLevel,
     /// Whether the handler is enabled
     enabled: bool,
@@ -32,43 +34,59 @@ pub struct ConsoleHandler {
     output: DebugWrite,
 }
 
-impl ConsoleHandler {
-    /// Creates a new console handler that writes to stdout.
-    pub fn new() -> Self {
-        Self::stdout(LogLevel::Info)
+impl Clone for ConsoleHandler {
+    fn clone(&self) -> Self {
+        Self {
+            level: self.level,
+            enabled: self.enabled,
+            formatter: self.formatter.clone(),
+            output: DebugWrite {
+                writer: Mutex::new(Box::new(io::stdout())),
+            },
+        }
     }
+}
 
-    /// Creates a new console handler that writes to stdout.
+impl ConsoleHandler {
+    /// Create a new console handler that writes to stdout
     pub fn stdout(level: LogLevel) -> Self {
         Self {
             level,
             enabled: true,
-            formatter: Formatter::new(),
+            formatter: Formatter::text()
+                .with_pattern("{level} - {message}")
+                .with_colors(true),
             output: DebugWrite {
-                writer: Box::new(io::stdout()),
+                writer: Mutex::new(Box::new(io::stdout())),
             },
         }
     }
 
-    /// Creates a new console handler that writes to stderr.
+    /// Create a new console handler that writes to stderr
     pub fn stderr(level: LogLevel) -> Self {
         Self {
             level,
             enabled: true,
-            formatter: Formatter::new(),
+            formatter: Formatter::text()
+                .with_pattern("{level} - {message}")
+                .with_colors(true),
             output: DebugWrite {
-                writer: Box::new(io::stderr()),
+                writer: Mutex::new(Box::new(io::stderr())),
             },
         }
     }
 
-    /// Creates a new console handler with a custom writer.
-    pub fn with_writer(writer: Box<dyn Write + Send + Sync>) -> Self {
+    /// Create a new console handler with a custom writer
+    pub fn with_writer(level: LogLevel, writer: Box<dyn Write + Send + Sync>) -> Self {
         Self {
-            level: LogLevel::Info,
+            level,
             enabled: true,
-            formatter: Formatter::new(),
-            output: DebugWrite { writer },
+            formatter: Formatter::text()
+                .with_pattern("{level} - {message}")
+                .with_colors(true),
+            output: DebugWrite {
+                writer: Mutex::new(writer),
+            },
         }
     }
 
@@ -79,9 +97,11 @@ impl ConsoleHandler {
     }
 
     /// Sets a custom format pattern.
-    pub fn with_pattern(mut self, pattern: impl Into<String>) -> Self {
-        self.formatter = self.formatter.with_pattern(pattern);
-        self
+    pub fn with_pattern(self, pattern: impl Into<String>) -> Self {
+        let mut handler = self;
+        let formatter = handler.formatter.with_pattern(pattern);
+        handler.formatter = formatter;
+        handler
     }
 
     /// Sets a custom format function for the handler.
@@ -92,15 +112,39 @@ impl ConsoleHandler {
         self.formatter = self.formatter.with_format(format_fn);
         self
     }
+
+    pub fn with_formatter(mut self, formatter: Formatter) -> Self {
+        self.formatter = formatter;
+        self
+    }
 }
 
 impl Default for ConsoleHandler {
     fn default() -> Self {
-        Self::new()
+        Self::stdout(LogLevel::Info)
     }
 }
 
 impl Handler for ConsoleHandler {
+    fn handle(&self, record: &Record) -> Result<(), String> {
+        if !self.enabled || record.level() < self.level {
+            return Ok(());
+        }
+
+        let formatted = self.formatter.format(record);
+        let mut writer = self
+            .output
+            .writer
+            .lock()
+            .map_err(|e| format!("Failed to lock writer: {}", e))?;
+        write!(writer, "{}", formatted)
+            .map_err(|e| format!("Failed to write to console: {}", e))?;
+        writer
+            .flush()
+            .map_err(|e| format!("Failed to flush console: {}", e))?;
+        Ok(())
+    }
+
     fn level(&self) -> LogLevel {
         self.level
     }
@@ -109,7 +153,7 @@ impl Handler for ConsoleHandler {
         self.level = level;
     }
 
-    fn enabled(&self) -> bool {
+    fn is_enabled(&self) -> bool {
         self.enabled
     }
 
@@ -123,19 +167,6 @@ impl Handler for ConsoleHandler {
 
     fn set_formatter(&mut self, formatter: Formatter) {
         self.formatter = formatter;
-    }
-
-    fn handle(&mut self, record: &Record) -> bool {
-        if !self.enabled || record.level() < self.level {
-            return false;
-        }
-
-        let formatted = self.formatter.format(record);
-        if writeln!(self.output.writer, "{}", formatted).is_err() {
-            return false;
-        }
-
-        true
     }
 }
 
@@ -183,7 +214,7 @@ mod tests {
     #[test]
     fn test_console_handler_level_filtering() {
         let output = TestOutput::new();
-        let mut handler = ConsoleHandler::with_writer(Box::new(output.clone()));
+        let mut handler = ConsoleHandler::with_writer(LogLevel::Warning, Box::new(output.clone()));
         handler.set_level(LogLevel::Warning);
 
         let info_record = Record::new(
@@ -201,15 +232,15 @@ mod tests {
             Some(42),
         );
 
-        assert!(!handler.handle(&info_record));
-        assert!(handler.handle(&warning_record));
+        assert!(handler.handle(&info_record).is_ok());
+        assert!(handler.handle(&warning_record).is_ok());
         assert!(output.contents().contains("warning message"));
     }
 
     #[test]
     fn test_console_handler_disabled() {
         let output = TestOutput::new();
-        let mut handler = ConsoleHandler::with_writer(Box::new(output.clone()));
+        let mut handler = ConsoleHandler::with_writer(LogLevel::Warning, Box::new(output.clone()));
         handler.set_enabled(false);
 
         let record = Record::new(
@@ -220,14 +251,16 @@ mod tests {
             Some(42),
         );
 
-        assert!(!handler.handle(&record));
+        assert!(handler.handle(&record).is_ok());
         assert!(output.contents().is_empty());
     }
 
     #[test]
     fn test_console_handler_formatting() {
         let output = TestOutput::new();
-        let mut handler = ConsoleHandler::with_writer(Box::new(output.clone()));
+        let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()))
+            .with_pattern("{level} - {message}")
+            .with_colors(false);
 
         let record = Record::new(
             LogLevel::Info,
@@ -237,24 +270,26 @@ mod tests {
             Some(42),
         );
 
-        assert!(handler.handle(&record));
+        assert!(handler.handle(&record).is_ok());
         assert!(output.contents().contains("INFO - Test message"));
     }
 
     #[test]
     fn test_console_handler_colors() {
         let output = TestOutput::new();
-        let mut handler = ConsoleHandler::with_writer(Box::new(output.clone())).with_colors(true);
+        let handler =
+            ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone())).with_colors(true);
+        // let handler = handler;
 
         let record = Record::new(
-            LogLevel::Info,
+            LogLevel::Error,
             "Test message",
             Some("test".to_string()),
             Some("test.rs".to_string()),
             Some(42),
         );
 
-        assert!(handler.handle(&record));
+        assert!(handler.handle(&record).is_ok());
         let output = output.contents();
         assert!(output.contains("\x1b["));
     }
@@ -262,7 +297,7 @@ mod tests {
     #[test]
     fn test_console_handler_metadata() {
         let output = TestOutput::new();
-        let mut handler = ConsoleHandler::with_writer(Box::new(output.clone()));
+        let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()));
 
         let mut record = Record::new(
             LogLevel::Info,
@@ -274,7 +309,7 @@ mod tests {
         record = record.with_metadata("key1", "value1");
         record = record.with_metadata("key2", "value2");
 
-        assert!(handler.handle(&record));
+        assert!(handler.handle(&record).is_ok());
         let contents = output.contents();
         assert!(contents.contains("key1=value1"));
         assert!(contents.contains("key2=value2"));
@@ -283,15 +318,9 @@ mod tests {
     #[test]
     fn test_console_handler_structured_data() {
         let output = TestOutput::new();
-        let mut handler =
-            ConsoleHandler::with_writer(Box::new(output.clone())).with_format(|record| {
-                format!(
-                    r#"{{"level":"{}","message":"{}","module":"{}"}}"#,
-                    record.level(),
-                    record.message(),
-                    record.module()
-                )
-            });
+        let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()))
+            .with_pattern(r#"{{"level":"{level}","message":"{message}","module":"{module}"}}"#)
+            .with_colors(false);
 
         let record = Record::new(
             LogLevel::Info,
@@ -301,10 +330,60 @@ mod tests {
             Some(42),
         );
 
-        assert!(handler.handle(&record));
+        assert!(handler.handle(&record).is_ok());
         let output = output.contents();
         assert!(output.contains(r#""level":"INFO""#));
         assert!(output.contains(r#""message":"Test message""#));
         assert!(output.contains(r#""module":"test""#));
+    }
+
+    #[test]
+    fn test_handle_uses_configured_writer() {
+        let output = TestOutput::new();
+        let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()));
+        let record = Record::new(
+            LogLevel::Info,
+            "test message",
+            Some("test".to_string()),
+            Some("test.rs".to_string()),
+            Some(42),
+        );
+
+        assert!(handler.handle(&record).is_ok());
+        assert!(output.contents().contains("test message"));
+    }
+
+    #[test]
+    fn test_handle_respects_disabled() {
+        let output = TestOutput::new();
+        let mut handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()));
+        handler.set_enabled(false);
+        let record = Record::new(
+            LogLevel::Info,
+            "test message",
+            Some("test".to_string()),
+            Some("test.rs".to_string()),
+            Some(42),
+        );
+
+        assert!(handler.handle(&record).is_ok());
+        assert!(output.contents().is_empty());
+    }
+
+    #[test]
+    fn test_handle_respects_level() {
+        let output = TestOutput::new();
+        let mut handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()));
+        handler.set_level(LogLevel::Error);
+        let record = Record::new(
+            LogLevel::Info,
+            "test message",
+            Some("test".to_string()),
+            Some("test.rs".to_string()),
+            Some(42),
+        );
+
+        assert!(handler.handle(&record).is_ok());
+        assert!(output.contents().is_empty());
     }
 }
