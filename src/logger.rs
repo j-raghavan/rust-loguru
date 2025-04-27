@@ -136,8 +136,9 @@ impl Logger {
     fn log_sync(&self, record: &Record) -> bool {
         let mut any_handled = false;
         for handler in &self.handlers {
-            let mut guard = handler.write();
-            if guard.enabled() && record.level() >= guard.level() && guard.handle(record) {
+            let guard = handler.write();
+            if guard.is_enabled() && record.level() >= guard.level() && guard.handle(record).is_ok()
+            {
                 any_handled = true;
             }
         }

@@ -1,3 +1,4 @@
+use colored::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
@@ -100,6 +101,19 @@ impl LogLevel {
             module_path.contains(pattern)
         }
     }
+
+    pub fn to_string_colored(&self) -> String {
+        let level_str = self.to_string();
+        match self {
+            LogLevel::Error => level_str.red().to_string(),
+            LogLevel::Warning => level_str.yellow().to_string(),
+            LogLevel::Info => level_str.green().to_string(),
+            LogLevel::Debug => level_str.blue().to_string(),
+            LogLevel::Trace => level_str.cyan().to_string(),
+            LogLevel::Success => level_str.green().to_string(),
+            LogLevel::Critical => level_str.red().to_string(),
+        }
+    }
 }
 
 impl PartialOrd for LogLevel {
@@ -116,7 +130,15 @@ impl Ord for LogLevel {
 
 impl fmt::Display for LogLevel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
+        match self {
+            LogLevel::Trace => write!(f, "TRACE"),
+            LogLevel::Debug => write!(f, "DEBUG"),
+            LogLevel::Info => write!(f, "INFO"),
+            LogLevel::Warning => write!(f, "WARN"),
+            LogLevel::Error => write!(f, "ERROR"),
+            LogLevel::Success => write!(f, "SUCCESS"),
+            LogLevel::Critical => write!(f, "CRITICAL"),
+        }
     }
 }
 

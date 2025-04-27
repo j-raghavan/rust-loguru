@@ -2,36 +2,35 @@ use rand::random;
 use rust_loguru::handler::console::ConsoleHandler;
 use rust_loguru::handler::file::FileHandler;
 use rust_loguru::handler::new_handler_ref;
-use rust_loguru::LogLevel;
-use rust_loguru::Logger;
+use rust_loguru::level::LogLevel;
+use rust_loguru::logger::Logger;
 use rust_loguru::Record;
 use std::thread;
 use std::time::Duration;
 
 fn main() {
-    // Create a console handler with custom format
-    let console = ConsoleHandler::stdout(LogLevel::Info).with_format(|record| {
-        format!(
-            "[{}] {} - {}",
-            record.level(),
-            record.module(),
-            record.message()
-        )
-    });
+    // Create console handler
+    let console = ConsoleHandler::stdout(LogLevel::Debug).with_colors(true);
+    let console = new_handler_ref(console);
 
     // Create a file handler with rotation
     let file = FileHandler::new("app.log")
         .expect("Failed to create file handler")
-        .with_rotation(10 * 1024 * 1024) // 10MB rotation
-        .with_retention(5); // Keep 5 old log files
+        .with_rotation(10 * 1024 * 1024, 5); // 10MB rotation size, keep 5 files
+    let file = new_handler_ref(file);
 
     // Create a new logger
     let mut logger = Logger::new(LogLevel::Debug);
-    logger.add_handler(new_handler_ref(console));
-    logger.add_handler(new_handler_ref(file));
+    logger.add_handler(console);
+    logger.add_handler(file);
 
     // Initialize the global logger
     let mut logger = rust_loguru::init(logger);
+
+    // Log some messages
+    logger.info("Application started");
+    logger.warn("This is a warning");
+    logger.error("This is an error");
 
     // Log messages at different levels
     logger.log(&Record::new(
