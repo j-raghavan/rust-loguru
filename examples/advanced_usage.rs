@@ -5,8 +5,22 @@ use rust_loguru::handler::new_handler_ref;
 use rust_loguru::level::LogLevel;
 use rust_loguru::logger::Logger;
 use rust_loguru::Record;
+use rust_loguru::ScopeGuard;
 use std::thread;
 use std::time::Duration;
+
+fn scopeguard_demo() {
+    let scope = ScopeGuard::enter("outer");
+    println!("[ScopeGuard] Indent level: {}", ScopeGuard::indent_level());
+    thread::sleep(Duration::from_millis(30));
+    {
+        let _inner = ScopeGuard::enter("inner");
+        println!("[ScopeGuard] Indent level: {}", ScopeGuard::indent_level());
+        thread::sleep(Duration::from_millis(10));
+    }
+    println!("[ScopeGuard] Indent level: {}", ScopeGuard::indent_level());
+    println!("[ScopeGuard] Elapsed in outer: {:?}", scope.elapsed());
+}
 
 fn main() {
     // Create console handler
@@ -173,6 +187,8 @@ fn main() {
         None,
         None,
     ));
+
+    scopeguard_demo();
 }
 
 fn perform_risky_operation() -> Result<(), String> {

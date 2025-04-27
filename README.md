@@ -166,6 +166,36 @@ let config = LoggerConfig::development();
 let config = LoggerConfig::production();
 ```
 
+### Scopes and Timed Execution
+
+Rust-Loguru provides a `ScopeGuard` utility for measuring the duration of code blocks and managing indentation for nested scopes. This is useful for profiling, debugging, and structured logging of code execution.
+
+```rust
+use rust_loguru::ScopeGuard;
+use std::thread;
+use std::time::Duration;
+
+fn main() {
+    // Enter a scope and measure its duration
+    let scope = ScopeGuard::enter("outer");
+    println!("Indent level: {}", ScopeGuard::indent_level());
+    thread::sleep(Duration::from_millis(50));
+    {
+        let _inner = ScopeGuard::enter("inner");
+        println!("Indent level: {}", ScopeGuard::indent_level());
+        thread::sleep(Duration::from_millis(20));
+        // _inner dropped here, indentation decreases
+    }
+    println!("Indent level: {}", ScopeGuard::indent_level());
+    println!("Elapsed in outer: {:?}", scope.elapsed());
+    // scope dropped here
+}
+```
+
+- Indentation is managed per-thread and resets after panics.
+- Use `ScopeGuard::elapsed()` to get the time spent in a scope.
+- Indentation increases with nested scopes and decreases on exit.
+
 ## Advanced Usage
 
 ### Creating Custom Handlers

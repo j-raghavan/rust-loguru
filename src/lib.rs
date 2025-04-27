@@ -55,6 +55,7 @@ pub mod logger;
 #[doc(hidden)]
 pub mod macros;
 pub mod record;
+pub mod scope;
 
 pub use config::{LoggerConfig, LoggerConfigBuilder};
 pub use formatters::json::JsonFormatter;
@@ -65,6 +66,7 @@ pub use handler::Handler;
 pub use level::LogLevel;
 pub use logger::{global, init, log, Logger};
 pub use record::Record;
+pub use scope::{ScopeError, ScopeGuard};
 
 // Re-export log crate types for compatibility
 pub use log::{LevelFilter, Log, Metadata, Record as LogRecord};
