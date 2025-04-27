@@ -58,6 +58,7 @@ pub mod logger;
 pub mod macros;
 pub mod record;
 pub mod scope;
+pub mod test_utils;
 
 pub use config::{LoggerConfig, LoggerConfigBuilder};
 pub use error::{error_chain, install_panic_hook, ContextError, OptionExt, ResultExt};

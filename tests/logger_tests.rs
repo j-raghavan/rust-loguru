@@ -1,5 +1,6 @@
 use parking_lot::RwLock;
 use rust_loguru::handler::NullHandler;
+use rust_loguru::{assert_log_contains, assert_log_level};
 use rust_loguru::{Handler, LogLevel, Logger, Record};
 use std::sync::Arc;
 
@@ -232,5 +233,94 @@ mod integration_tests {
     #[should_panic(expected = "framework middleware not yet implemented")]
     fn test_middleware_request_response_logging() {
         middleware::request_response_logging();
+    }
+}
+
+#[cfg(test)]
+mod test_utils_tests {
+    use rust_loguru::test_utils::*;
+    use rust_loguru::{assert_log_contains, assert_log_level};
+    use rust_loguru::{LogLevel, Record};
+
+    #[test]
+    fn test_log_capture_basic() {
+        let capture = LogCapture::new();
+        let record = Record::new(LogLevel::Info, "hello world", None, None, None);
+        capture.handle(&record);
+        assert_eq!(capture.records().len(), 1);
+        assert!(capture.contains_message("hello"));
+        assert!(capture.contains_level(LogLevel::Info));
+    }
+
+    #[test]
+    fn test_log_capture_clear() {
+        let capture = LogCapture::new();
+        let record = Record::new(LogLevel::Info, "msg", None, None, None);
+        capture.handle(&record);
+        capture.clear();
+        assert_eq!(capture.records().len(), 0);
+    }
+
+    #[test]
+    fn test_mock_logger() {
+        let logger = MockLogger::new(LogLevel::Debug);
+        let record = Record::new(LogLevel::Info, "mocked", None, None, None);
+        logger.log(&record);
+        assert!(logger.capture.contains_message("mocked"));
+        assert!(logger.capture.contains_level(LogLevel::Info));
+    }
+
+    #[test]
+    fn test_mock_logger_level_filter() {
+        let logger = MockLogger::new(LogLevel::Error);
+        let record = Record::new(LogLevel::Info, "should not log", None, None, None);
+        assert!(!logger.log(&record));
+        assert_eq!(logger.capture.records().len(), 0);
+    }
+
+    #[test]
+    fn test_assert_log_contains_macro() {
+        let capture = LogCapture::new();
+        let record = Record::new(LogLevel::Info, "macro test", None, None, None);
+        capture.handle(&record);
+        assert_log_contains!(capture, "macro test");
+    }
+
+    #[test]
+    fn test_assert_log_level_macro() {
+        let capture = LogCapture::new();
+        let record = Record::new(LogLevel::Warning, "level macro", None, None, None);
+        capture.handle(&record);
+        assert_log_level!(capture, LogLevel::Warning);
+    }
+
+    struct DummyLogger {
+        level: LogLevel,
+    }
+    impl DummyLogger {
+        fn set_level(&mut self, level: LogLevel) {
+            self.level = level;
+        }
+        fn level(&self) -> LogLevel {
+            self.level
+        }
+    }
+
+    #[test]
+    fn test_temp_log_level() {
+        let mut logger = DummyLogger {
+            level: LogLevel::Info,
+        };
+        fn set_level(l: &mut DummyLogger, lvl: LogLevel) {
+            l.set_level(lvl);
+        }
+        fn get_level(l: &DummyLogger) -> LogLevel {
+            l.level()
+        }
+        {
+            let _temp = TempLogLevel::new(&mut logger, LogLevel::Debug, set_level, get_level);
+        }
+        let restored_level = logger.level();
+        assert_eq!(restored_level, LogLevel::Info);
     }
 }
