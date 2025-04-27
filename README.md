@@ -249,6 +249,56 @@ let record = Record::new(
 log(&record);
 ```
 
+## Advanced Context Usage
+
+Rust-Loguru supports structured, thread-local, and async-propagatable context for logs. This allows you to automatically attach metadata (like user IDs, request IDs, etc.) to every log line in a given scope or async task.
+
+```rust
+use rust_loguru::{info, debug, context};
+
+fn main() {
+    // Add context for the current thread (e.g., user ID)
+    let mut ctx = context::ContextMap::new();
+    ctx.insert("user_id".to_string(), context::ContextValue::String("alice".to_string()));
+    context::push_context(ctx);
+
+    // Log a message; context will be attached if integrated into Record/formatters
+    info!("User logged in");
+
+    // Add more context (e.g., request ID) in a nested scope
+    let mut req_ctx = context::ContextMap::new();
+    req_ctx.insert("request_id".to_string(), context::ContextValue::String("req-123".to_string()));
+    context::push_context(req_ctx);
+
+    debug!("Processing request");
+
+    // Pop request context when done
+    context::pop_context();
+
+    // Pop user context at the end
+    context::pop_context();
+}
+```
+
+#### Async Context Propagation
+
+You can propagate context across async tasks:
+
+```rust
+use rust_loguru::context;
+use std::thread;
+
+let mut ctx = context::ContextMap::new();
+ctx.insert("trace_id".to_string(), context::ContextValue::String("abc123".to_string()));
+context::push_context(ctx);
+let arc_ctx = context::propagate_context_for_async();
+
+thread::spawn(move || {
+    context::set_context_from_arc(arc_ctx);
+    // ... logging here will see the propagated context ...
+});
+```
+
 ## Performance Considerations
 
 - Log records below the configured level are filtered out early for minimal overhead

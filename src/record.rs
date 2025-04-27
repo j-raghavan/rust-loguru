@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 
+use crate::context;
 use crate::level::LogLevel;
 
 /// Type alias for the record formatting function.
@@ -76,6 +77,10 @@ impl Record {
         file: Option<String>,
         line: Option<u32>,
     ) -> Self {
+        let mut context_map = HashMap::new();
+        for (k, v) in context::current_context().into_iter() {
+            context_map.insert(k, context_value_to_json(v));
+        }
         Self {
             level,
             message: message.into(),
@@ -84,7 +89,7 @@ impl Record {
             line: line.unwrap_or(0),
             timestamp: Utc::now(),
             metadata: HashMap::new(),
-            context: HashMap::new(),
+            context: context_map,
             format_fn: None,
         }
     }
@@ -406,6 +411,18 @@ impl<'de> Deserialize<'de> for Record {
             ],
             RecordVisitor,
         )
+    }
+}
+
+fn context_value_to_json(val: context::ContextValue) -> serde_json::Value {
+    match val {
+        context::ContextValue::String(s) => serde_json::Value::String(s),
+        context::ContextValue::Integer(i) => serde_json::Value::Number(i.into()),
+        context::ContextValue::Float(f) => match serde_json::Number::from_f64(f) {
+            Some(num) => serde_json::Value::Number(num),
+            None => serde_json::Value::Null,
+        },
+        context::ContextValue::Bool(b) => serde_json::Value::Bool(b),
     }
 }
 
