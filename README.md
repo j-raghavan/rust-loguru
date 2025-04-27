@@ -555,6 +555,81 @@ fn main() {
     middleware::request_response_logging();
 }
 ```
+
+## Test Utilities
+
+Rust-Loguru provides a set of test utilities to help you capture logs, assert on log output, and use mock loggers in your tests. These are available in the `rust_loguru::test_utils` module.
+
+### Log Capture
+
+You can capture log records during tests and inspect them:
+
+```rust
+use rust_loguru::test_utils::LogCapture;
+use rust_loguru::{LogLevel, Record};
+
+let capture = LogCapture::new();
+let record = Record::new(LogLevel::Info, "test message", None, None, None);
+capture.handle(&record);
+assert!(capture.contains_message("test message"));
+assert!(capture.contains_level(LogLevel::Info));
+```
+
+### Assertion Macros
+
+Rust-Loguru provides macros to assert that a log capture contains a message or a log level:
+
+```rust
+use rust_loguru::test_utils::LogCapture;
+use rust_loguru::{LogLevel, Record};
+use rust_loguru::{assert_log_contains, assert_log_level};
+
+let capture = LogCapture::new();
+let record = Record::new(LogLevel::Warning, "something happened", None, None, None);
+capture.handle(&record);
+assert_log_contains!(capture, "something happened");
+assert_log_level!(capture, LogLevel::Warning);
+```
+
+### Mock Logger
+
+A mock logger is provided for testing code that expects a logger:
+
+```rust
+use rust_loguru::test_utils::MockLogger;
+use rust_loguru::{LogLevel, Record};
+
+let logger = MockLogger::new(LogLevel::Debug);
+let record = Record::new(LogLevel::Info, "mocked log", None, None, None);
+logger.log(&record);
+assert!(logger.capture.contains_message("mocked log"));
+```
+
+### Temporary Log Level Adjustment
+
+You can temporarily set the log level for a logger in a test:
+
+```rust
+use rust_loguru::test_utils::TempLogLevel;
+use rust_loguru::{LogLevel, Record};
+
+struct MyLogger { level: LogLevel }
+impl MyLogger {
+    fn set_level(&mut self, level: LogLevel) { self.level = level; }
+}
+impl rust_loguru::logger::Logger for MyLogger {
+    fn log(&self, _record: &Record) -> bool { true }
+    fn level(&self) -> LogLevel { self.level }
+}
+
+let mut logger = MyLogger { level: LogLevel::Info };
+{
+    let _temp = TempLogLevel::new(&mut logger, LogLevel::Debug);
+    assert_eq!(logger.level(), LogLevel::Debug);
+}
+assert_eq!(logger.level(), LogLevel::Info);
+```
+
 ## License
 
 This project is licensed under MIT of:
