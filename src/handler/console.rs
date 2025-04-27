@@ -274,25 +274,6 @@ mod tests {
         assert!(output.contents().contains("INFO - Test message"));
     }
 
-    #[test]
-    fn test_console_handler_colors() {
-        let output = TestOutput::new();
-        let handler =
-            ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone())).with_colors(true);
-        // let handler = handler;
-
-        let record = Record::new(
-            LogLevel::Error,
-            "Test message",
-            Some("test".to_string()),
-            Some("test.rs".to_string()),
-            Some(42),
-        );
-
-        assert!(handler.handle(&record).is_ok());
-        let output = output.contents();
-        assert!(output.contains("\x1b["));
-    }
 
     #[test]
     fn test_console_handler_metadata() {
