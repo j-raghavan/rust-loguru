@@ -212,7 +212,7 @@ async fn test_async_runtime_tokio_integration() {
 
 #[cfg(test)]
 mod integration_tests {
-    use rust_loguru::integration::{log_compat, middleware};
+    use rust_loguru::integration::{async_runtime, log_compat, middleware};
 
     #[test]
     fn test_log_compat_init_loguru_as_log() {
