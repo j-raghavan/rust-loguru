@@ -17,6 +17,7 @@ A flexible and efficient logging library for Rust inspired by Python's Loguru. D
 - **File rotation**: Automatic file rotation based on size with retention policies
 - **Colorized output**: Colorful console output for better readability
 - **Source location capture**: Automatically capture file, line, and module information
+- **Ergonomic error handling and context helpers**: Extension traits, error chain, panic hook, and macros
 
 ## Installation
 
@@ -195,6 +196,74 @@ fn main() {
 - Indentation is managed per-thread and resets after panics.
 - Use `ScopeGuard::elapsed()` to get the time spent in a scope.
 - Indentation increases with nested scopes and decreases on exit.
+
+## Error Handling Utilities
+
+Rust-Loguru provides ergonomic helpers for error handling, context, and panic reporting.
+
+### Extension Traits for `Result` and `Option`
+
+```rust
+use rust_loguru::{ResultExt, OptionExt};
+
+fn might_fail() -> Result<(), std::io::Error> {
+    Err(std::io::Error::new(std::io::ErrorKind::Other, "fail"))
+}
+
+fn main() {
+    // Log an error if it occurs
+    might_fail().log_error("Failed to do something important");
+
+    // Add context to errors
+    let res = might_fail().with_context(|| "while reading config file");
+    if let Err(e) = res {
+        eprintln!("Error with context: {}", e);
+    }
+
+    // Log if an Option is None
+    let value: Option<u32> = None;
+    value.log_none("Expected a value but got None");
+}
+```
+
+### Error Chain Extraction
+
+```rust
+use rust_loguru::{ResultExt, error_chain};
+
+fn main() {
+    let res: Result<(), std::io::Error> = Err(std::io::Error::new(std::io::ErrorKind::Other, "fail"));
+    let res = res.with_context(|| "while doing something");
+    if let Err(e) = res {
+        for cause in error_chain(&e) {
+            eprintln!("Cause: {}", cause);
+        }
+    }
+}
+```
+
+### Panic Hook Installation
+
+```rust
+use rust_loguru::install_panic_hook;
+
+fn main() {
+    install_panic_hook(); // Log all panics with file/line info
+    // ... rest of your code ...
+}
+```
+
+### Source Location and Error Logging Macros
+
+```rust
+use rust_loguru::{source_location, log_error_with_location};
+
+fn main() {
+    let err = "Something went wrong";
+    log_error_with_location!(err);
+    log_error_with_location!(err, "while processing request");
+}
+```
 
 ## Advanced Usage
 
