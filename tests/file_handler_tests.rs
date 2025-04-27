@@ -16,7 +16,13 @@ use rust_loguru::record::Record;
 fn create_test_dir() -> PathBuf {
     let test_dir = PathBuf::from("test_logs");
     if !test_dir.exists() {
-        fs::create_dir(&test_dir).unwrap();
+        // Only create if it doesn't exist already
+        fs::create_dir_all(&test_dir).unwrap_or_else(|e| {
+            // Handle race condition where dir might be created between check and create
+            if e.kind() != std::io::ErrorKind::AlreadyExists {
+                panic!("Failed to create test directory: {}", e);
+            }
+        });
     }
     test_dir
 }
