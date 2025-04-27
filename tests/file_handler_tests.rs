@@ -1,11 +1,6 @@
 use std::fs;
-// use std::io;
-// use tempfile::tempdir;
-// use std::path::Path;
-// use std::time::SystemTime;
 use std::path::PathBuf;
-// use std::time::Duration;
-// use std::os::unix::fs::PermissionsExt;
+use std::sync::Once;
 
 use rust_loguru::formatters::Formatter;
 use rust_loguru::handler::file::FileHandler;
@@ -13,30 +8,44 @@ use rust_loguru::handler::Handler;
 use rust_loguru::level::LogLevel;
 use rust_loguru::record::Record;
 
-fn create_test_dir() -> PathBuf {
+// Used to ensure directory is created only once during test suite run
+static INIT: Once = Once::new();
+
+fn setup_test_dir() -> PathBuf {
     let test_dir = PathBuf::from("test_logs");
-    if !test_dir.exists() {
-        // Only create if it doesn't exist already
+
+    INIT.call_once(|| {
+        // Clean up any existing directory from previous test runs
+        if test_dir.exists() {
+            fs::remove_dir_all(&test_dir).unwrap_or_else(|e| {
+                eprintln!("Warning: Could not remove existing test directory: {}", e);
+            });
+        }
+
+        // Create a fresh directory
         fs::create_dir_all(&test_dir).unwrap_or_else(|e| {
-            // Handle race condition where dir might be created between check and create
-            if e.kind() != std::io::ErrorKind::AlreadyExists {
-                panic!("Failed to create test directory: {}", e);
-            }
+            panic!("Failed to create test directory: {}", e);
         });
-    }
-    test_dir
+    });
+
+    test_dir.clone()
 }
 
-fn cleanup_test_dir(test_dir: &PathBuf) {
-    if test_dir.exists() {
-        fs::remove_dir_all(test_dir).unwrap();
+fn cleanup_log_file(log_file: &PathBuf) {
+    if log_file.exists() {
+        fs::remove_file(log_file).unwrap_or_else(|e| {
+            eprintln!("Warning: Could not remove log file: {}", e);
+        });
     }
 }
 
 #[test]
 fn test_file_handler_basic() {
-    let test_dir = create_test_dir();
+    let test_dir = setup_test_dir();
     let log_file = test_dir.join("test.log");
+
+    // Ensure clean state
+    cleanup_log_file(&log_file);
 
     let handler = FileHandler::new(&log_file).expect("Failed to create file handler");
     assert!(handler.is_enabled());
@@ -56,13 +65,17 @@ fn test_file_handler_basic() {
     let contents = fs::read_to_string(&log_file).unwrap();
     assert!(contents.contains("test message"));
 
-    cleanup_test_dir(&test_dir);
+    // Clean up this test's file
+    cleanup_log_file(&log_file);
 }
 
 #[test]
 fn test_file_handler_level_filtering() {
-    let test_dir = create_test_dir();
+    let test_dir = setup_test_dir();
     let log_file = test_dir.join("level_test.log");
+
+    // Ensure clean state
+    cleanup_log_file(&log_file);
 
     let handler = FileHandler::new(&log_file)
         .expect("Failed to create file handler")
@@ -93,13 +106,17 @@ fn test_file_handler_level_filtering() {
     assert!(!contents.contains("info message"));
     assert!(contents.contains("warning message"));
 
-    cleanup_test_dir(&test_dir);
+    // Clean up this test's file
+    cleanup_log_file(&log_file);
 }
 
 #[test]
 fn test_file_handler_enable_disable() {
-    let test_dir = create_test_dir();
+    let test_dir = setup_test_dir();
     let log_file = test_dir.join("enable_test.log");
+
+    // Ensure clean state
+    cleanup_log_file(&log_file);
 
     let mut handler = FileHandler::new(&log_file).expect("Failed to create file handler");
 
@@ -128,13 +145,17 @@ fn test_file_handler_enable_disable() {
     assert!(contents.contains("enabled message"));
     assert!(!contents.contains("disabled message"));
 
-    cleanup_test_dir(&test_dir);
+    // Clean up this test's file
+    cleanup_log_file(&log_file);
 }
 
 #[test]
 fn test_file_handler_with_metadata() {
-    let test_dir = create_test_dir();
+    let test_dir = setup_test_dir();
     let log_file = test_dir.join("metadata_test.log");
+
+    // Ensure clean state
+    cleanup_log_file(&log_file);
 
     let handler = FileHandler::new(&log_file).expect("Failed to create file handler");
 
@@ -154,13 +175,17 @@ fn test_file_handler_with_metadata() {
     assert!(contents.contains("key1=value1"));
     assert!(contents.contains("key2=value2"));
 
-    cleanup_test_dir(&test_dir);
+    // Clean up this test's file
+    cleanup_log_file(&log_file);
 }
 
 #[test]
 fn test_file_handler_formatting() {
-    let test_dir = create_test_dir();
+    let test_dir = setup_test_dir();
     let log_file = test_dir.join("format_test.log");
+
+    // Ensure clean state
+    cleanup_log_file(&log_file);
 
     let handler = FileHandler::new(&log_file)
         .expect("Failed to create file handler")
@@ -179,5 +204,6 @@ fn test_file_handler_formatting() {
     let contents = fs::read_to_string(&log_file).unwrap();
     assert!(contents.contains("INFO - Test message"));
 
-    cleanup_test_dir(&test_dir);
+    // Clean up this test's file
+    cleanup_log_file(&log_file);
 }
