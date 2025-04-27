@@ -638,7 +638,7 @@ assert_eq!(logger.level(), LogLevel::Info);
 
 ## TODO / Roadmap
 
-The following is the prioritized implementation list to bring Rust-Loguru fully in line with the v2 specification and development plan:
+The following is the prioritized development plan:
 
 1. **File Handler Enhancements**
    - Time-based rotation (daily, hourly, etc.)
