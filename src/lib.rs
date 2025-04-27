@@ -46,6 +46,7 @@
 //! ```
 
 pub mod config;
+pub mod context;
 pub mod formatter;
 pub mod formatters;
 pub mod handler;
