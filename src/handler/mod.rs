@@ -6,6 +6,8 @@ use crate::formatters::Formatter;
 use crate::level::LogLevel;
 use crate::record::Record;
 
+pub type HandlerFilter = Arc<dyn Fn(&Record) -> bool + Send + Sync>;
+
 /// A trait for handlers that handle log records
 pub trait Handler: Send + Sync + fmt::Debug {
     /// Get the log level
@@ -26,12 +28,38 @@ pub trait Handler: Send + Sync + fmt::Debug {
     /// Set the formatter
     fn set_formatter(&mut self, formatter: Formatter);
 
+    /// Set a filter closure for this handler (optional, default: no filter)
+    fn set_filter(&mut self, filter: Option<HandlerFilter>);
+
+    /// Get the filter closure for this handler (optional)
+    fn filter(&self) -> Option<&HandlerFilter>;
+
     /// Handle a log record
     fn handle(&self, record: &Record) -> Result<(), String>;
+
+    /// Handle a batch of log records (default: call handle for each)
+    fn handle_batch(&self, records: &[Record]) -> Result<(), String> {
+        for record in records {
+            self.handle(record)?;
+        }
+        Ok(())
+    }
+
+    /// Lifecycle: initialize the handler (default: no-op)
+    fn init(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+    /// Lifecycle: flush the handler (default: no-op)
+    fn flush(&self) -> Result<(), String> {
+        Ok(())
+    }
+    /// Lifecycle: shutdown the handler (default: no-op)
+    fn shutdown(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// A handler that does nothing
-#[derive(Debug, Clone)]
 pub struct NullHandler {
     /// The log level
     level: LogLevel,
@@ -39,6 +67,8 @@ pub struct NullHandler {
     enabled: bool,
     /// The formatter to use
     formatter: Formatter,
+    /// Optional filter closure
+    filter: Option<HandlerFilter>,
 }
 
 impl Default for NullHandler {
@@ -47,6 +77,7 @@ impl Default for NullHandler {
             level: LogLevel::Info,
             enabled: true,
             formatter: Formatter::text(),
+            filter: None,
         }
     }
 }
@@ -76,6 +107,14 @@ impl Handler for NullHandler {
         self.formatter = formatter;
     }
 
+    fn set_filter(&mut self, filter: Option<HandlerFilter>) {
+        self.filter = filter;
+    }
+
+    fn filter(&self) -> Option<&HandlerFilter> {
+        self.filter.as_ref()
+    }
+
     fn handle(&self, _record: &Record) -> Result<(), String> {
         Ok(())
     }
@@ -87,7 +126,18 @@ impl NullHandler {
             level,
             enabled: true,
             formatter: Formatter::text(),
+            filter: None,
         }
+    }
+}
+
+impl fmt::Debug for NullHandler {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NullHandler")
+            .field("level", &self.level)
+            .field("enabled", &self.enabled)
+            .field("formatter", &self.formatter)
+            .finish()
     }
 }
 
@@ -104,7 +154,6 @@ pub fn new_handler_ref<H: Handler + 'static>(handler: H) -> HandlerRef {
 }
 
 /// Base handler implementation
-#[derive(Debug)]
 pub struct BaseHandler {
     /// The log level
     level: LogLevel,
@@ -112,6 +161,8 @@ pub struct BaseHandler {
     enabled: bool,
     /// The formatter
     formatter: Formatter,
+    /// Optional filter closure
+    filter: Option<HandlerFilter>,
 }
 
 impl BaseHandler {
@@ -121,6 +172,7 @@ impl BaseHandler {
             level,
             enabled: true,
             formatter: Formatter::text(),
+            filter: None,
         }
     }
 }
@@ -150,11 +202,29 @@ impl Handler for BaseHandler {
         self.formatter = formatter;
     }
 
+    fn set_filter(&mut self, filter: Option<HandlerFilter>) {
+        self.filter = filter;
+    }
+
+    fn filter(&self) -> Option<&HandlerFilter> {
+        self.filter.as_ref()
+    }
+
     fn handle(&self, record: &Record) -> Result<(), String> {
         if !self.enabled || record.level() < self.level {
             return Ok(());
         }
         Ok(())
+    }
+}
+
+impl fmt::Debug for BaseHandler {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BaseHandler")
+            .field("level", &self.level)
+            .field("enabled", &self.enabled)
+            .field("formatter", &self.formatter)
+            .finish()
     }
 }
 

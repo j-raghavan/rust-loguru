@@ -69,6 +69,14 @@ impl Handler for CountingHandler {
         self.count.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
+
+    fn set_filter(&mut self, _filter: Option<Arc<dyn Fn(&Record) -> bool + Send + Sync>>) {
+        // No-op for test handler
+    }
+
+    fn filter(&self) -> Option<&Arc<dyn Fn(&Record) -> bool + Send + Sync>> {
+        None
+    }
 }
 
 /// Benchmark synchronous logging throughput

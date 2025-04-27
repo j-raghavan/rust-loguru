@@ -1,16 +1,17 @@
 use crate::formatters::Formatter;
 use crate::level::LogLevel;
 use crate::record::Record;
-use std::fmt::Debug;
+use flate2::write::GzEncoder;
+use flate2::Compression;
+use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::Mutex;
 
-use super::Handler;
+use super::{Handler, HandlerFilter};
 
 /// A handler that writes log records to a file
-#[derive(Debug)]
 pub struct FileHandler {
     level: LogLevel,
     enabled: bool,
@@ -19,6 +20,25 @@ pub struct FileHandler {
     path: String,
     max_size: Option<usize>,
     max_files: Option<usize>,
+    compress: bool,
+    filter: Option<HandlerFilter>,
+    batch_buffer: Mutex<Vec<Record>>,
+    batch_size: Option<usize>,
+}
+
+impl fmt::Debug for FileHandler {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FileHandler")
+            .field("level", &self.level)
+            .field("enabled", &self.enabled)
+            .field("formatter", &self.formatter)
+            .field("path", &self.path)
+            .field("max_size", &self.max_size)
+            .field("max_files", &self.max_files)
+            .field("compress", &self.compress)
+            .field("batch_size", &self.batch_size)
+            .finish()
+    }
 }
 
 impl Clone for FileHandler {
@@ -48,6 +68,13 @@ impl Clone for FileHandler {
             path: self.path.clone(),
             max_size: self.max_size,
             max_files: self.max_files,
+            compress: self.compress,
+            filter: self.filter.clone(),
+            batch_buffer: Mutex::new({
+                let buffer_guard = self.batch_buffer.lock().unwrap();
+                buffer_guard.clone()
+            }),
+            batch_size: self.batch_size,
         }
     }
 }
@@ -65,6 +92,10 @@ impl FileHandler {
             path,
             max_size: None,
             max_files: None,
+            compress: false,
+            filter: None,
+            batch_buffer: Mutex::new(Vec::new()),
+            batch_size: None,
         })
     }
 
@@ -104,6 +135,21 @@ impl FileHandler {
         self
     }
 
+    pub fn with_filter(mut self, filter: HandlerFilter) -> Self {
+        self.filter = Some(filter);
+        self
+    }
+
+    pub fn with_compression(mut self, compress: bool) -> Self {
+        self.compress = compress;
+        self
+    }
+
+    pub fn with_batching(mut self, batch_size: usize) -> Self {
+        self.batch_size = Some(batch_size);
+        self
+    }
+
     fn rotate_if_needed(&self) -> io::Result<()> {
         if let (Some(max_size), Some(max_files)) = (self.max_size, self.max_files) {
             let mut file_guard = self
@@ -136,6 +182,15 @@ impl FileHandler {
                     if Path::new(&self.path).exists() {
                         let rotated_path = format!("{}.1", self.path);
                         std::fs::rename(&self.path, &rotated_path)?;
+                        if self.compress {
+                            let mut input = File::open(&rotated_path)?;
+                            let gz_path = format!("{}.gz", rotated_path);
+                            let mut encoder =
+                                GzEncoder::new(File::create(&gz_path)?, Compression::default());
+                            std::io::copy(&mut input, &mut encoder)?;
+                            encoder.finish()?;
+                            std::fs::remove_file(&rotated_path)?;
+                        }
                     }
 
                     // Open a new file
@@ -162,20 +217,29 @@ impl Handler for FileHandler {
         if !self.enabled || record.level() < self.level {
             return Ok(());
         }
-
+        if let Some(filter) = &self.filter {
+            if !(filter)(record) {
+                return Ok(());
+            }
+        }
+        if let Some(batch_size) = self.batch_size {
+            let mut buffer = self.batch_buffer.lock().unwrap();
+            buffer.push(record.clone());
+            if buffer.len() >= batch_size {
+                let batch = buffer.drain(..).collect::<Vec<_>>();
+                drop(buffer);
+                return self.handle_batch(&batch);
+            }
+            return Ok(());
+        }
         let formatted = self.formatter.format(record);
-
-        // Check if we need to rotate the file
         if let Err(e) = self.rotate_if_needed() {
             return Err(format!("Failed to rotate log file: {}", e));
         }
-
-        // Write to the file
         let mut file_guard = self
             .file
             .lock()
             .map_err(|e| format!("Failed to lock file mutex: {}", e))?;
-
         if let Some(file) = file_guard.as_mut() {
             match write!(file, "{}", formatted) {
                 Ok(_) => Ok(()),
@@ -215,6 +279,58 @@ impl Handler for FileHandler {
 
     fn set_formatter(&mut self, formatter: Formatter) {
         self.formatter = formatter;
+    }
+
+    fn set_filter(&mut self, filter: Option<HandlerFilter>) {
+        self.filter = filter;
+    }
+
+    fn filter(&self) -> Option<&HandlerFilter> {
+        self.filter.as_ref()
+    }
+
+    fn handle_batch(&self, records: &[Record]) -> Result<(), String> {
+        let mut file_guard = self
+            .file
+            .lock()
+            .map_err(|e| format!("Failed to lock file mutex: {}", e))?;
+        for record in records {
+            if !self.enabled || record.level() < self.level {
+                continue;
+            }
+            if let Some(filter) = &self.filter {
+                if !(filter)(record) {
+                    continue;
+                }
+            }
+            let formatted = self.formatter.format(record);
+            if let Err(e) = self.rotate_if_needed() {
+                return Err(format!("Failed to rotate log file: {}", e));
+            }
+            if let Some(file) = file_guard.as_mut() {
+                if let Err(e) = write!(file, "{}", formatted) {
+                    return Err(format!("Failed to write to file: {}", e));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn init(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn flush(&self) -> Result<(), String> {
+        let mut file_guard = self.file.lock().unwrap();
+        if let Some(file) = file_guard.as_mut() {
+            file.flush()
+                .map_err(|e| format!("Failed to flush file: {}", e))?;
+        }
+        Ok(())
+    }
+
+    fn shutdown(&mut self) -> Result<(), String> {
+        self.flush()
     }
 }
 
@@ -435,6 +551,78 @@ mod tests {
         );
 
         assert!(handler.handle(&record).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_file_handler_filtering() -> io::Result<()> {
+        let temp_dir = TempDir::new()?;
+        let log_path = temp_dir.path().join("test.log");
+        let filter = std::sync::Arc::new(|record: &Record| record.message().contains("pass"));
+        let handler = FileHandler::new(log_path.to_str().unwrap())?.with_filter(filter);
+        let record1 = Record::new(
+            LogLevel::Info,
+            "should pass",
+            None::<String>,
+            None::<String>,
+            None,
+        );
+        let record2 = Record::new(
+            LogLevel::Info,
+            "should fail",
+            None::<String>,
+            None::<String>,
+            None,
+        );
+        assert!(handler.handle(&record1).is_ok());
+        assert!(handler.handle(&record2).is_ok());
+        let contents = fs::read_to_string(log_path)?;
+        assert!(contents.contains("should pass"));
+        assert!(!contents.contains("should fail"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_file_handler_batch() -> io::Result<()> {
+        let temp_dir = TempDir::new()?;
+        let log_path = temp_dir.path().join("test.log");
+        let handler = FileHandler::new(log_path.to_str().unwrap())?.with_batching(2);
+        let record1 = Record::new(LogLevel::Info, "msg1", None::<String>, None::<String>, None);
+        let record2 = Record::new(LogLevel::Info, "msg2", None::<String>, None::<String>, None);
+        assert!(handler.handle(&record1).is_ok());
+        assert!(handler.handle(&record2).is_ok());
+        let contents = fs::read_to_string(log_path)?;
+        assert!(contents.contains("msg1"));
+        assert!(contents.contains("msg2"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_file_handler_compression() -> io::Result<()> {
+        let temp_dir = TempDir::new()?;
+        let log_path = temp_dir.path().join("test.log");
+        let handler = FileHandler::new(log_path.to_str().unwrap())?
+            .with_rotation(100, 2)
+            .with_compression(true);
+        let record1 = Record::new(
+            LogLevel::Info,
+            "A".repeat(200).as_str(),
+            None::<String>,
+            None::<String>,
+            None,
+        );
+        let record2 = Record::new(
+            LogLevel::Info,
+            "B".repeat(200).as_str(),
+            None::<String>,
+            None::<String>,
+            None,
+        );
+        assert!(handler.handle(&record1).is_ok());
+        assert!(handler.handle(&record2).is_ok());
+        handler.flush().unwrap();
+        let rotated_gz = format!("{}.1.gz", log_path.to_string_lossy());
+        assert!(Path::new(&rotated_gz).exists());
         Ok(())
     }
 }

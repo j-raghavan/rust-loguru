@@ -1,6 +1,6 @@
 [package]
 name = "rust-loguru"
-version = "0.1.9"
+version = "0.1.10"
 edition = "2021"
 authors = ["Jayasimha Raghavan <mr.jayasimha@gmail.com>"]
 description = "A flexible and extensible logging library for Rust. Similar functionality as python's loguru package."
@@ -31,6 +31,7 @@ rand = "0.8"
 crossbeam-channel = "0.5.15"
 log = "0.4.27"
 regex = "1.10.2"
+flate2 = "1.0"
 
 
 [dev-dependencies]
