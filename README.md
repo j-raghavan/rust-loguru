@@ -624,7 +624,12 @@ impl rust_loguru::logger::Logger for MyLogger {
 
 let mut logger = MyLogger { level: LogLevel::Info };
 {
-    let _temp = TempLogLevel::new(&mut logger, LogLevel::Debug);
+    let _temp = TempLogLevel::new(
+        &mut logger,
+        LogLevel::Debug,
+        |logger, level| logger.set_level(level),
+        |logger| logger.level(),
+    );
     assert_eq!(logger.level(), LogLevel::Debug);
 }
 assert_eq!(logger.level(), LogLevel::Info);
