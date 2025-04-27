@@ -18,6 +18,7 @@ max_level_warn = []
 max_level_info = []
 max_level_debug = []
 max_level_trace = []
+tokio = ["dep:tokio"]
 
 [dependencies]
 lazy_static = "1.4.0"
@@ -33,11 +34,13 @@ log = "0.4.27"
 regex = "1.10.2"
 flate2 = "1.0"
 toml = "0.8.21"
+tokio = { version = "1.37", optional = true, features = ["rt", "macros", "time"] }
 
 
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3.8"
+tokio-test = "0.4"
 
 
 [[example]]
