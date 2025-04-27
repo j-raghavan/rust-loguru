@@ -6,6 +6,7 @@ use rust_loguru::level::LogLevel;
 use rust_loguru::logger::Logger;
 use rust_loguru::Record;
 use rust_loguru::ScopeGuard;
+
 use std::thread;
 use std::time::Duration;
 

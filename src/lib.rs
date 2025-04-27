@@ -47,6 +47,7 @@
 
 pub mod config;
 pub mod context;
+pub mod error;
 pub mod formatter;
 pub mod formatters;
 pub mod handler;
@@ -58,6 +59,7 @@ pub mod record;
 pub mod scope;
 
 pub use config::{LoggerConfig, LoggerConfigBuilder};
+pub use error::{error_chain, install_panic_hook, ContextError, OptionExt, ResultExt};
 pub use formatters::json::JsonFormatter;
 pub use formatters::template::TemplateFormatter;
 pub use formatters::text::TextFormatter;

@@ -4,6 +4,7 @@ use rust_loguru::handler::new_handler_ref;
 use rust_loguru::level::LogLevel;
 use rust_loguru::logger::Logger;
 use rust_loguru::Record;
+use rust_loguru::{install_panic_hook, OptionExt, ResultExt};
 
 fn main() {
     // Create console handler
@@ -94,4 +95,12 @@ fn main() {
             .with_metadata("error", e),
         );
     }
+
+    // --- Error Handling Utilities Minimal Example ---
+    install_panic_hook();
+    let res: Result<(), std::io::Error> =
+        Err(std::io::Error::new(std::io::ErrorKind::Other, "fail"));
+    let _ = res.log_error("API call failed");
+    let opt: Option<u32> = None;
+    opt.log_none("Missing value in API response");
 }
