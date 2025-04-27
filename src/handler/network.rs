@@ -189,7 +189,7 @@ impl Clone for NetworkHandler {
             formatter: self.formatter.clone(),
             stream: self.stream.clone(),
             filter: self.filter.clone(),
-            batch_buffer: Arc::new(Mutex::new(Vec::new())),
+            batch_buffer: self.batch_buffer.clone(),
             batch_size: self.batch_size,
         }
     }
