@@ -1,7 +1,11 @@
 use rust_loguru::config::{LoggerConfig, LoggerConfigBuilder};
 use rust_loguru::handler::{new_handler_ref, NullHandler};
 use rust_loguru::level::LogLevel;
+use std::env;
+// use std::fs::File;
+use std::io::Write;
 use std::path::PathBuf;
+use tempfile::NamedTempFile;
 
 #[test]
 fn test_default_config() {
@@ -88,4 +92,137 @@ fn test_builder_chain() {
     assert!(config.use_colors);
     assert_eq!(config.format, "chain test");
     assert_eq!(config.handlers.len(), 1);
+}
+
+#[test]
+fn test_env_override_level() {
+    env::set_var("LOGURU_LEVEL", "Debug");
+    let config = LoggerConfigBuilder::new().with_env_overrides().build();
+    assert_eq!(config.level, LogLevel::Debug);
+    env::remove_var("LOGURU_LEVEL");
+}
+
+#[test]
+fn test_env_override_capture_source() {
+    env::set_var("LOGURU_CAPTURE_SOURCE", "false");
+    let config = LoggerConfigBuilder::new().with_env_overrides().build();
+    assert!(!config.capture_source);
+    env::remove_var("LOGURU_CAPTURE_SOURCE");
+}
+
+#[test]
+fn test_env_override_use_colors() {
+    env::set_var("LOGURU_USE_COLORS", "false");
+    let config = LoggerConfigBuilder::new().with_env_overrides().build();
+    assert!(!config.use_colors);
+    env::remove_var("LOGURU_USE_COLORS");
+}
+
+#[test]
+fn test_env_override_format() {
+    env::set_var("LOGURU_FORMAT", "[custom] {message}");
+    let config = LoggerConfigBuilder::new().with_env_overrides().build();
+    assert_eq!(config.format, "[custom] {message}");
+    env::remove_var("LOGURU_FORMAT");
+}
+
+#[test]
+fn test_env_override_combined() {
+    env::set_var("LOGURU_LEVEL", "Error");
+    env::set_var("LOGURU_CAPTURE_SOURCE", "true");
+    env::set_var("LOGURU_USE_COLORS", "true");
+    env::set_var("LOGURU_FORMAT", "{level}: {message}");
+    let config = LoggerConfigBuilder::new().with_env_overrides().build();
+    assert_eq!(config.level, LogLevel::Error);
+    assert!(config.capture_source);
+    assert!(config.use_colors);
+    assert_eq!(config.format, "{level}: {message}");
+    env::remove_var("LOGURU_LEVEL");
+    env::remove_var("LOGURU_CAPTURE_SOURCE");
+    env::remove_var("LOGURU_USE_COLORS");
+    env::remove_var("LOGURU_FORMAT");
+}
+
+#[test]
+fn test_toml_config_full() {
+    let toml = r#"
+level = "Warning"
+capture_source = false
+use_colors = false
+format = "[TOML] {message}"
+"#;
+    let config = LoggerConfigBuilder::new()
+        .from_toml_str(toml)
+        .unwrap()
+        .build();
+    assert_eq!(config.level, LogLevel::Warning);
+    assert!(!config.capture_source);
+    assert!(!config.use_colors);
+    assert_eq!(config.format, "[TOML] {message}");
+}
+
+#[test]
+fn test_toml_config_partial() {
+    let toml = r#"
+level = "Error"
+"#;
+    let config = LoggerConfigBuilder::new()
+        .from_toml_str(toml)
+        .unwrap()
+        .build();
+    assert_eq!(config.level, LogLevel::Error);
+    assert!(config.capture_source); // default
+    assert!(config.use_colors); // default
+    assert_eq!(config.format, "{time} {level} {message}"); // default
+}
+
+#[test]
+fn test_toml_file_config() {
+    let toml = r#"
+level = "Debug"
+capture_source = true
+use_colors = false
+format = "[file] {message}"
+"#;
+    let mut file = NamedTempFile::new().unwrap();
+    write!(file, "{}", toml).unwrap();
+    let config = LoggerConfigBuilder::new()
+        .from_toml_file(file.path())
+        .unwrap()
+        .build();
+    assert_eq!(config.level, LogLevel::Debug);
+    assert!(config.capture_source);
+    assert!(!config.use_colors);
+    assert_eq!(config.format, "[file] {message}");
+}
+
+#[test]
+fn test_toml_and_builder_precedence() {
+    let toml = r#"
+level = "Info"
+use_colors = false
+"#;
+    let config = LoggerConfigBuilder::new()
+        .from_toml_str(toml)
+        .unwrap()
+        .level(LogLevel::Error) // should override TOML
+        .use_colors(true) // should override TOML
+        .build();
+    assert_eq!(config.level, LogLevel::Error);
+    assert!(config.use_colors);
+}
+
+#[test]
+fn test_toml_and_env_precedence() {
+    env::set_var("LOGURU_LEVEL", "Debug");
+    let toml = r#"
+level = "Info"
+"#;
+    let config = LoggerConfigBuilder::new()
+        .from_toml_str(toml)
+        .unwrap()
+        .with_env_overrides()
+        .build();
+    assert_eq!(config.level, LogLevel::Debug); // env wins
+    env::remove_var("LOGURU_LEVEL");
 }

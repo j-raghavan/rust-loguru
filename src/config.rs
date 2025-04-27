@@ -1,6 +1,9 @@
 use crate::handler::HandlerRef;
 use crate::level::LogLevel;
+use std::fs;
+use std::io;
 use std::path::PathBuf;
+use toml;
 
 /// Configuration for the logger.
 #[derive(Debug)]
@@ -91,9 +94,76 @@ impl LoggerConfigBuilder {
         self
     }
 
+    /// Apply environment variable overrides to the configuration.
+    ///
+    /// Supported environment variables:
+    /// - LOGURU_LEVEL (e.g., "Debug", "Info", "Warn", "Error")
+    /// - LOGURU_CAPTURE_SOURCE ("true"/"false")
+    /// - LOGURU_USE_COLORS ("true"/"false")
+    /// - LOGURU_FORMAT (format string)
+    pub fn with_env_overrides(mut self) -> Self {
+        use std::env;
+        if let Ok(level) = env::var("LOGURU_LEVEL") {
+            if let Ok(parsed) = level.parse::<LogLevel>() {
+                self.config.level = parsed;
+            } else {
+                // Accept lowercase too
+                let level_up = level.to_ascii_uppercase();
+                if let Ok(parsed) = level_up.parse::<LogLevel>() {
+                    self.config.level = parsed;
+                }
+            }
+        }
+        if let Ok(capture_source) = env::var("LOGURU_CAPTURE_SOURCE") {
+            self.config.capture_source =
+                matches!(capture_source.as_str(), "1" | "true" | "TRUE" | "True");
+        }
+        if let Ok(use_colors) = env::var("LOGURU_USE_COLORS") {
+            self.config.use_colors = matches!(use_colors.as_str(), "1" | "true" | "TRUE" | "True");
+        }
+        if let Ok(format) = env::var("LOGURU_FORMAT") {
+            self.config.format = format;
+        }
+        self
+    }
+
     /// Build the final configuration.
     pub fn build(self) -> LoggerConfig {
         self.config
+    }
+
+    /// Load configuration from a TOML string. Builder/env overrides take precedence.
+    ///
+    /// Supported TOML keys:
+    /// - level (e.g., "Debug", "Info", "Warn", "Error")
+    /// - capture_source (bool)
+    /// - use_colors (bool)
+    /// - format (string)
+    pub fn from_toml_str(mut self, toml_str: &str) -> Result<Self, toml::de::Error> {
+        let toml_cfg: LoggerConfigToml = toml::from_str(toml_str)?;
+        if let Some(level) = toml_cfg.level {
+            if let Ok(parsed) = level.parse::<LogLevel>() {
+                self.config.level = parsed;
+            }
+        }
+        if let Some(capture_source) = toml_cfg.capture_source {
+            self.config.capture_source = capture_source;
+        }
+        if let Some(use_colors) = toml_cfg.use_colors {
+            self.config.use_colors = use_colors;
+        }
+        if let Some(format) = toml_cfg.format {
+            self.config.format = format;
+        }
+        Ok(self)
+    }
+
+    /// Load configuration from a TOML file. Builder/env overrides take precedence.
+    pub fn from_toml_file<P: AsRef<std::path::Path>>(self, path: P) -> Result<Self, io::Error> {
+        let content = fs::read_to_string(path)?;
+        // Propagate TOML parse errors as io::Error
+        self.from_toml_str(&content)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 }
 
@@ -134,4 +204,12 @@ impl LoggerConfig {
             .format("{time} {level} {message}".to_string())
             .build()
     }
+}
+
+#[derive(serde::Deserialize, Debug, Default)]
+struct LoggerConfigToml {
+    level: Option<String>,
+    capture_source: Option<bool>,
+    use_colors: Option<bool>,
+    format: Option<String>,
 }
