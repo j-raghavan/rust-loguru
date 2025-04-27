@@ -635,6 +635,52 @@ let mut logger = MyLogger { level: LogLevel::Info };
 assert_eq!(logger.level(), LogLevel::Info);
 ```
 
+
+## TODO / Roadmap
+
+The following is the prioritized implementation list to bring Rust-Loguru fully in line with the v2 specification and development plan:
+
+1. **File Handler Enhancements**
+   - Time-based rotation (daily, hourly, etc.)
+   - Retention policies (max age, max files, cleanup of old logs)
+   - File permissions (configurable on creation)
+   - Async file writing (true async I/O, not just async logging queue)
+
+2. **Configuration System Upgrades**
+   - Environment variable overrides (e.g., `RUST_LOGURU_LEVEL=debug`)
+   - File-based configuration (TOML/YAML/JSON config loading)
+   - Preset configurations (easy-to-use, opinionated defaults for common scenarios)
+
+3. **Integration & Extensibility**
+   - Async runtime integration (fully implement tokio/async-std support, e.g., log flushing, context propagation)
+   - Framework middleware (request/response logging for actix, axum, etc.)
+   - Network/HTTP/in-memory handlers (implement or stub with clear errors/documentation)
+
+4. **Advanced Handler Features**
+   - Batching for all handlers (not just file, but also network, etc.)
+   - Handler-specific filtering (allow each handler to filter by level, target, etc.)
+   - Compression options (support for gzip, zip, etc. for rotated files)
+
+5. **Context & Scope Improvements**
+   - Panic/exception capture in scopes (log panics with context and stack trace)
+   - Async scope support (ensure scopes work seamlessly with async/await)
+
+6. **Documentation & Cleanup**
+   - Remove legacy files (e.g., `src/formatter.rs`)
+   - Document stubbed/unimplemented features (make it clear what is and isn't available)
+   - Update README and module docs to reflect new features and usage patterns
+
+7. **Optional/Bonus**
+   - File permission control for log files
+   - Support for emojis/symbols in all formatters
+   - More built-in format templates
+   - Integration with external services (CloudWatch, Elasticsearch, etc.)
+
+---
+
+*Contributions to any of these areas are welcome! See the issues tracker for more details or to discuss implementation approaches.*
+
+
 ## License
 
 This project is licensed under MIT of:
