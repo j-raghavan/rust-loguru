@@ -70,7 +70,10 @@ impl Clone for FileHandler {
             max_files: self.max_files,
             compress: self.compress,
             filter: self.filter.clone(),
-            batch_buffer: Mutex::new(Vec::new()),
+            batch_buffer: Mutex::new({
+                let buffer_guard = self.batch_buffer.lock().unwrap();
+                buffer_guard.clone()
+            }),
             batch_size: self.batch_size,
         }
     }
