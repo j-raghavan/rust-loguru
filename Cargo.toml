@@ -1,6 +1,6 @@
 [package]
 name = "rust-loguru"
-version = "0.1.10"
+version = "0.1.12"
 edition = "2021"
 authors = ["Jayasimha Raghavan <mr.jayasimha@gmail.com>"]
 description = "A flexible and extensible logging library for Rust. Similar functionality as python's loguru package."
@@ -36,12 +36,19 @@ flate2 = "1.0"
 toml = "0.8.21"
 tokio = { version = "1.37", optional = true, features = ["rt", "macros", "time"] }
 
-
 [dev-dependencies]
-criterion = "0.5"
+criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3.8"
 tokio-test = "0.4"
-
+slog = "2.7"
+slog-async = "2.7"
+slog-term = "2.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+env_logger = "0.10"
+bytesize = "1.2"
+num_cpus = "1.15"
+procfs = "0.15"  # For Linux only (resource usage tracking)
 
 [[example]]
 name = "api_usage"
@@ -50,3 +57,24 @@ path = "examples/api_usage.rs"
 [[example]]
 name = "advanced_usage"
 path = "examples/advanced_usage.rs"
+
+# Benchmark configurations - add these sections to enable criterion benchmarks
+[[bench]]
+name = "basic_logging_benchmark"
+harness = false
+
+[[bench]]
+name = "structured_logging_benchmark"
+harness = false
+
+[[bench]]
+name = "high_volume_benchmark"
+harness = false
+
+[[bench]]
+name = "concurrent_benchmark"
+harness = false
+
+[[bench]]
+name = "file_rotation_benchmark"
+harness = false
