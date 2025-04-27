@@ -198,3 +198,92 @@ fn test_macro_with_multiple_handlers() {
     let result = warn!("Test warning message");
     assert!(result, "Warning message should be handled by both handlers");
 }
+
+#[test]
+fn test_push_and_pop_context_macro() {
+    use rust_loguru::{get_context, pop_context, push_context};
+    push_context!("user" => "alice", "role" => "admin");
+    let user = get_context!("user");
+    assert_eq!(user.unwrap().to_string(), "alice");
+    pop_context!();
+    let user = get_context!("user");
+    assert!(user.is_none());
+}
+
+#[test]
+fn test_set_context_macro() {
+    use rust_loguru::{get_context, pop_context, push_context, set_context};
+    push_context!("foo" => "bar");
+    set_context!("foo", "baz");
+    let foo = get_context!("foo");
+    assert_eq!(foo.unwrap().to_string(), "baz");
+    pop_context!();
+}
+
+#[test]
+fn test_scope_macro() {
+    use rust_loguru::scope;
+    let _guard = scope!("test_scope_macro");
+    // Just check that it compiles and returns a guard
+}
+
+#[test]
+fn test_scoped_info_macro() {
+    use rust_loguru::scoped_info;
+    let _scope = scoped_info!("scoped_info_test");
+    // Should log on enter and exit
+}
+
+#[test]
+fn test_log_error_macro() {
+    use rust_loguru::log_error;
+    let err = "something went wrong";
+    log_error!(err);
+    log_error!(err, "custom message");
+}
+
+#[test]
+fn test_log_error_with_context_macro() {
+    use rust_loguru::log_error_with_context;
+    let err = "fail";
+    let ctx = "context info";
+    log_error_with_context!(err, ctx);
+}
+
+#[test]
+fn test_try_log_macro_result() {
+    use rust_loguru::try_log;
+    let ok: Result<i32, &str> = Ok(1);
+    let err: Result<i32, &str> = Err("fail");
+    assert_eq!(try_log!(ok, "should not log"), Ok(1));
+    let res = try_log!(err, "should log");
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_try_log_macro_option() {
+    use rust_loguru::try_log;
+    let some = Some(42);
+    let none: Option<i32> = None;
+    assert_eq!(try_log!(option some, "should not log"), Some(42));
+    assert_eq!(try_log!(option none, "should log"), None);
+}
+
+#[test]
+fn test_log_if_enabled_macro() {
+    use rust_loguru::{log_if_enabled, LogLevel, STATIC_LEVEL};
+    let result = log_if_enabled!(LogLevel::Info, "Should log if enabled");
+    if LogLevel::Info >= STATIC_LEVEL {
+        assert!(result);
+    } else {
+        assert!(!result);
+    }
+}
+
+#[test]
+fn test_info_kv_macro() {
+    let _logger = create_test_logger(LogLevel::Info);
+    use rust_loguru::info_kv;
+    let result = info_kv!("Structured message"; "foo" => "bar", "baz" => "qux");
+    assert!(result);
+}

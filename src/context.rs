@@ -23,6 +23,17 @@ pub enum ContextValue {
     // Add more types as needed
 }
 
+impl std::fmt::Display for ContextValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ContextValue::String(s) => write!(f, "{}", s),
+            ContextValue::Integer(i) => write!(f, "{}", i),
+            ContextValue::Float(fl) => write!(f, "{}", fl),
+            ContextValue::Bool(b) => write!(f, "{}", b),
+        }
+    }
+}
+
 thread_local! {
     static CONTEXT_STACK: RefCell<Vec<ContextMap>> = const { RefCell::new(vec![]) };
 }

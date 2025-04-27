@@ -61,6 +61,61 @@ fn main() {
 }
 ```
 
+## Macro Usage Examples
+
+Rust-Loguru provides a rich set of macros for ergonomic and powerful logging, context, and error handling. Here are some advanced macro usages:
+
+### Context Macros
+```rust
+use rust_loguru::{push_context, pop_context, set_context, get_context};
+
+push_context!("user" => "alice", "role" => "admin");
+set_context!("user", "bob");
+let user = get_context!("user");
+println!("Current user: {}", user.unwrap());
+pop_context!();
+```
+
+### Scope Macros
+```rust
+use rust_loguru::{scope, scoped_info};
+
+// Simple scope guard for timing and indentation
+let _guard = scope!("my_scope");
+
+// Log entering and exiting a scope with timing
+let _scope = scoped_info!("important_section");
+```
+
+### Error Integration Macros
+```rust
+use rust_loguru::{log_error, log_error_with_context, try_log};
+
+let err = "something went wrong";
+log_error!(err);
+log_error!(err, "custom message");
+log_error_with_context!(err, "context info");
+
+let res: Result<i32, &str> = Err("fail");
+let _ = try_log!(res, "operation failed");
+let opt: Option<i32> = None;
+let _ = try_log!(option opt, "missing value");
+```
+
+### Compile-time Level Filtering
+```rust
+use rust_loguru::{log_if_enabled, LogLevel};
+
+let result = log_if_enabled!(LogLevel::Info, "This will only log if enabled at compile time");
+```
+
+### Structured Data in Level Macros
+```rust
+use rust_loguru::info_kv;
+
+info_kv!("User login event"; "user_id" => "123", "ip" => "192.168.1.1");
+```
+
 ## Core Concepts
 
 ### Log Levels
@@ -454,4 +509,3 @@ This project is licensed under MIT of:
 
 - Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
 - MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-```

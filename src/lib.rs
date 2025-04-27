@@ -81,6 +81,10 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+/// Compile-time static log level for filtering (can be overridden at build time)
+#[allow(dead_code)]
+pub static STATIC_LEVEL: level::LogLevel = level::LogLevel::Trace;
+
 /// Async logging command type
 #[doc(hidden)]
 pub enum AsyncLogCommand {
