@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::sync::Once;
 
 use rust_loguru::formatters::Formatter;
@@ -8,44 +9,51 @@ use rust_loguru::handler::Handler;
 use rust_loguru::level::LogLevel;
 use rust_loguru::record::Record;
 
-// Used to ensure directory is created only once during test suite run
+// Static initialization
 static INIT: Once = Once::new();
+static TEST_DIR_SETUP: Mutex<bool> = Mutex::new(false);
 
-fn setup_test_dir() -> PathBuf {
-    let test_dir = PathBuf::from("test_logs");
-
-    INIT.call_once(|| {
-        // Clean up any existing directory from previous test runs
-        if test_dir.exists() {
-            fs::remove_dir_all(&test_dir).unwrap_or_else(|e| {
-                eprintln!("Warning: Could not remove existing test directory: {}", e);
-            });
-        }
-
-        // Create a fresh directory
-        fs::create_dir_all(&test_dir).unwrap_or_else(|e| {
-            panic!("Failed to create test directory: {}", e);
-        });
-    });
-
-    test_dir.clone()
+fn get_test_dir() -> PathBuf {
+    PathBuf::from("test_logs")
 }
 
-fn cleanup_log_file(log_file: &PathBuf) {
-    if log_file.exists() {
-        fs::remove_file(log_file).unwrap_or_else(|e| {
-            eprintln!("Warning: Could not remove log file: {}", e);
-        });
+fn setup_test_environment() {
+    INIT.call_once(|| {
+        let test_dir = get_test_dir();
+
+        // Clean up any existing directory
+        if test_dir.exists() {
+            let _ = fs::remove_dir_all(&test_dir);
+        }
+
+        // Create the directory fresh
+        let _ = fs::create_dir_all(&test_dir);
+
+        // Mark as initialized
+        let mut initialized = TEST_DIR_SETUP.lock().unwrap();
+        *initialized = true;
+    });
+
+    // Ensure directory exists even if another thread already ran the initialization
+    let test_dir = get_test_dir();
+    if !test_dir.exists() {
+        let _ = fs::create_dir_all(&test_dir);
     }
+}
+
+fn get_unique_log_path(test_name: &str) -> PathBuf {
+    setup_test_environment();
+    get_test_dir().join(format!("{}.log", test_name))
 }
 
 #[test]
 fn test_file_handler_basic() {
-    let test_dir = setup_test_dir();
-    let log_file = test_dir.join("test.log");
+    let log_file = get_unique_log_path("basic_test");
 
-    // Ensure clean state
-    cleanup_log_file(&log_file);
+    // Remove the file if it exists
+    if log_file.exists() {
+        let _ = fs::remove_file(&log_file);
+    }
 
     let handler = FileHandler::new(&log_file).expect("Failed to create file handler");
     assert!(handler.is_enabled());
@@ -62,20 +70,22 @@ fn test_file_handler_basic() {
     assert!(handler.handle(&record).is_ok());
     assert!(log_file.exists());
 
-    let contents = fs::read_to_string(&log_file).unwrap();
-    assert!(contents.contains("test message"));
+    let contents = match fs::read_to_string(&log_file) {
+        Ok(content) => content,
+        Err(e) => panic!("Failed to read log file: {}", e),
+    };
 
-    // Clean up this test's file
-    cleanup_log_file(&log_file);
+    assert!(contents.contains("test message"));
 }
 
 #[test]
 fn test_file_handler_level_filtering() {
-    let test_dir = setup_test_dir();
-    let log_file = test_dir.join("level_test.log");
+    let log_file = get_unique_log_path("level_filtering_test");
 
-    // Ensure clean state
-    cleanup_log_file(&log_file);
+    // Remove the file if it exists
+    if log_file.exists() {
+        let _ = fs::remove_file(&log_file);
+    }
 
     let handler = FileHandler::new(&log_file)
         .expect("Failed to create file handler")
@@ -102,60 +112,64 @@ fn test_file_handler_level_filtering() {
     );
     assert!(handler.handle(&warning_record).is_ok());
 
-    let contents = fs::read_to_string(&log_file).unwrap();
+    let contents = match fs::read_to_string(&log_file) {
+        Ok(content) => content,
+        Err(e) => panic!("Failed to read log file: {}", e),
+    };
+
     assert!(!contents.contains("info message"));
     assert!(contents.contains("warning message"));
-
-    // Clean up this test's file
-    cleanup_log_file(&log_file);
 }
 
 #[test]
 fn test_file_handler_enable_disable() {
-    let test_dir = setup_test_dir();
-    let log_file = test_dir.join("enable_test.log");
+    let log_file = get_unique_log_path("enable_disable_test");
 
-    // Ensure clean state
-    cleanup_log_file(&log_file);
+    // Remove the file if it exists
+    if log_file.exists() {
+        let _ = fs::remove_file(&log_file);
+    }
 
     let mut handler = FileHandler::new(&log_file).expect("Failed to create file handler");
 
     // Write while enabled
-    let record = Record::new(
+    let record1 = Record::new(
         LogLevel::Info,
         "enabled message",
         Some("test".to_string()),
         Some("test.rs".to_string()),
         Some(42),
     );
-    assert!(handler.handle(&record).is_ok());
+    assert!(handler.handle(&record1).is_ok());
 
     // Disable and write again
     handler.set_enabled(false);
-    let record = Record::new(
+    let record2 = Record::new(
         LogLevel::Info,
         "disabled message",
         Some("test".to_string()),
         Some("test.rs".to_string()),
         Some(42),
     );
-    assert!(handler.handle(&record).is_ok());
+    assert!(handler.handle(&record2).is_ok());
 
-    let contents = fs::read_to_string(&log_file).unwrap();
+    let contents = match fs::read_to_string(&log_file) {
+        Ok(content) => content,
+        Err(e) => panic!("Failed to read log file: {}", e),
+    };
+
     assert!(contents.contains("enabled message"));
     assert!(!contents.contains("disabled message"));
-
-    // Clean up this test's file
-    cleanup_log_file(&log_file);
 }
 
 #[test]
 fn test_file_handler_with_metadata() {
-    let test_dir = setup_test_dir();
-    let log_file = test_dir.join("metadata_test.log");
+    let log_file = get_unique_log_path("metadata_test");
 
-    // Ensure clean state
-    cleanup_log_file(&log_file);
+    // Remove the file if it exists
+    if log_file.exists() {
+        let _ = fs::remove_file(&log_file);
+    }
 
     let handler = FileHandler::new(&log_file).expect("Failed to create file handler");
 
@@ -171,21 +185,23 @@ fn test_file_handler_with_metadata() {
 
     assert!(handler.handle(&record).is_ok());
 
-    let contents = fs::read_to_string(&log_file).unwrap();
+    let contents = match fs::read_to_string(&log_file) {
+        Ok(content) => content,
+        Err(e) => panic!("Failed to read log file: {}", e),
+    };
+
     assert!(contents.contains("key1=value1"));
     assert!(contents.contains("key2=value2"));
-
-    // Clean up this test's file
-    cleanup_log_file(&log_file);
 }
 
 #[test]
 fn test_file_handler_formatting() {
-    let test_dir = setup_test_dir();
-    let log_file = test_dir.join("format_test.log");
+    let log_file = get_unique_log_path("formatting_test");
 
-    // Ensure clean state
-    cleanup_log_file(&log_file);
+    // Remove the file if it exists
+    if log_file.exists() {
+        let _ = fs::remove_file(&log_file);
+    }
 
     let handler = FileHandler::new(&log_file)
         .expect("Failed to create file handler")
@@ -201,9 +217,11 @@ fn test_file_handler_formatting() {
     );
 
     assert!(handler.handle(&record).is_ok());
-    let contents = fs::read_to_string(&log_file).unwrap();
-    assert!(contents.contains("INFO - Test message"));
 
-    // Clean up this test's file
-    cleanup_log_file(&log_file);
+    let contents = match fs::read_to_string(&log_file) {
+        Ok(content) => content,
+        Err(e) => panic!("Failed to read log file: {}", e),
+    };
+
+    assert!(contents.contains("INFO - Test message"));
 }
