@@ -509,3 +509,56 @@ This project is licensed under MIT of:
 
 - Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
 - MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+## Integration Features
+
+Rust-Loguru provides an `integration` module for compatibility and middleware with other logging systems and frameworks. This module is designed for advanced use cases where you want to:
+
+- Use Rust-Loguru as the backend for the `log` crate
+- Integrate with async runtimes (e.g., spawn log flushing tasks in tokio)
+- Add middleware for web frameworks (e.g., request/response logging)
+
+### Log Crate Compatibility
+
+Rust-Loguru can act as the backend for the [`log`](https://docs.rs/log/) crate. This allows you to use the standard `log` macros (`log::info!`, `log::warn!`, etc.) and have them routed through Rust-Loguru.
+
+```rust
+use rust_loguru::integration::log_compat;
+use log::info;
+
+fn main() {
+    // Set up your logger as usual
+    // ...
+    log_compat::init_loguru_as_log();
+    info!("This message goes through Rust-Loguru!");
+}
+```
+
+### Async Runtime Integration (Tokio)
+
+Rust-Loguru can integrate with async runtimes like Tokio to spawn background tasks for log management.
+
+**Requires the `tokio` feature.**
+
+```rust
+use rust_loguru::integration::async_runtime;
+
+#[tokio::main]
+async fn main() {
+    // This will spawn a background task for log management (e.g., flushing)
+    async_runtime::integrate_with_tokio().await;
+    // ... your async code ...
+}
+```
+
+### Framework Middleware (Web Frameworks)
+
+```rust
+use rust_loguru::integration::middleware;
+
+fn main() {
+    // This will eventually provide request/response logging middleware for web frameworks
+    // Currently, this will panic with an unimplemented message
+    middleware::request_response_logging();
+}
+```

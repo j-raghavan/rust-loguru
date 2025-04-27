@@ -51,6 +51,7 @@ pub mod error;
 pub mod formatter;
 pub mod formatters;
 pub mod handler;
+pub mod integration;
 pub mod level;
 pub mod logger;
 #[doc(hidden)]

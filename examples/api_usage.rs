@@ -103,4 +103,18 @@ fn main() {
     let _ = res.log_error("API call failed");
     let opt: Option<u32> = None;
     opt.log_none("Missing value in API response");
+
+    // --- Integration module usage examples ---
+    // These will panic if run, but show the intended API for future integration features.
+    // fn integration_examples() {
+    //     // use rust_loguru::integration::{async_runtime, log_compat, middleware};
+    //     // Log crate compatibility
+    //     // log_compat::init_loguru_as_log(); // Will panic
+
+    //     // Async runtime integration
+    //     // async_runtime::integrate_with_tokio(); // Will panic
+
+    //     // Framework middleware
+    //     // middleware::request_response_logging(); // Will panic
+    // }
 }
