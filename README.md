@@ -503,13 +503,6 @@ thread::spawn(move || {
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## License
-
-This project is licensed under MIT of:
-
-- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
 ## Integration Features
 
 Rust-Loguru provides an `integration` module for compatibility and middleware with other logging systems and frameworks. This module is designed for advanced use cases where you want to:
@@ -562,3 +555,9 @@ fn main() {
     middleware::request_response_logging();
 }
 ```
+## License
+
+This project is licensed under MIT of:
+
+- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
