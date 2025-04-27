@@ -6,7 +6,7 @@ use crate::formatters::Formatter;
 use crate::level::LogLevel;
 use crate::record::Record;
 
-use super::Handler;
+use super::{Handler, HandlerFilter};
 
 /// A wrapper around a writer that implements Debug
 pub struct DebugWrite {
@@ -22,7 +22,6 @@ impl fmt::Debug for DebugWrite {
 }
 
 /// A handler that writes to the console
-#[derive(Debug)]
 pub struct ConsoleHandler {
     /// The log level
     level: LogLevel,
@@ -32,6 +31,8 @@ pub struct ConsoleHandler {
     formatter: Formatter,
     /// The output stream to write to
     output: DebugWrite,
+    /// Optional filter closure
+    filter: Option<HandlerFilter>,
 }
 
 impl Clone for ConsoleHandler {
@@ -43,6 +44,7 @@ impl Clone for ConsoleHandler {
             output: DebugWrite {
                 writer: Mutex::new(Box::new(io::stdout())),
             },
+            filter: self.filter.clone(),
         }
     }
 }
@@ -59,6 +61,7 @@ impl ConsoleHandler {
             output: DebugWrite {
                 writer: Mutex::new(Box::new(io::stdout())),
             },
+            filter: None,
         }
     }
 
@@ -73,6 +76,7 @@ impl ConsoleHandler {
             output: DebugWrite {
                 writer: Mutex::new(Box::new(io::stderr())),
             },
+            filter: None,
         }
     }
 
@@ -87,6 +91,7 @@ impl ConsoleHandler {
             output: DebugWrite {
                 writer: Mutex::new(writer),
             },
+            filter: None,
         }
     }
 
@@ -117,6 +122,11 @@ impl ConsoleHandler {
         self.formatter = formatter;
         self
     }
+
+    pub fn with_filter(mut self, filter: HandlerFilter) -> Self {
+        self.filter = Some(filter);
+        self
+    }
 }
 
 impl Default for ConsoleHandler {
@@ -130,7 +140,11 @@ impl Handler for ConsoleHandler {
         if !self.enabled || record.level() < self.level {
             return Ok(());
         }
-
+        if let Some(filter) = &self.filter {
+            if !(filter)(record) {
+                return Ok(());
+            }
+        }
         let formatted = self.formatter.format(record);
         let mut writer = self
             .output
@@ -167,6 +181,44 @@ impl Handler for ConsoleHandler {
 
     fn set_formatter(&mut self, formatter: Formatter) {
         self.formatter = formatter;
+    }
+
+    fn set_filter(&mut self, filter: Option<HandlerFilter>) {
+        self.filter = filter;
+    }
+
+    fn filter(&self) -> Option<&HandlerFilter> {
+        self.filter.as_ref()
+    }
+
+    fn handle_batch(&self, records: &[Record]) -> Result<(), String> {
+        for record in records {
+            self.handle(record)?;
+        }
+        Ok(())
+    }
+
+    fn init(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn flush(&self) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn shutdown(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+impl fmt::Debug for ConsoleHandler {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ConsoleHandler")
+            .field("level", &self.level)
+            .field("enabled", &self.enabled)
+            .field("formatter", &self.formatter)
+            .field("output", &self.output)
+            .finish()
     }
 }
 
@@ -365,5 +417,46 @@ mod tests {
 
         assert!(handler.handle(&record).is_ok());
         assert!(output.contents().is_empty());
+    }
+
+    #[test]
+    fn test_console_handler_filtering() {
+        let output = TestOutput::new();
+        let filter = std::sync::Arc::new(|record: &Record| record.message().contains("pass"));
+        let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()))
+            .with_filter(filter.clone());
+        let record1 = Record::new(
+            LogLevel::Info,
+            "should pass",
+            None::<String>,
+            None::<String>,
+            None,
+        );
+        let record2 = Record::new(
+            LogLevel::Info,
+            "should fail",
+            None::<String>,
+            None::<String>,
+            None,
+        );
+        assert!(handler.handle(&record1).is_ok());
+        assert!(handler.handle(&record2).is_ok());
+        let contents = output.contents();
+        assert!(contents.contains("should pass"));
+        assert!(!contents.contains("should fail"));
+    }
+
+    #[test]
+    fn test_console_handler_batch() {
+        let output = TestOutput::new();
+        let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()));
+        let records = vec![
+            Record::new(LogLevel::Info, "msg1", None::<String>, None::<String>, None),
+            Record::new(LogLevel::Info, "msg2", None::<String>, None::<String>, None),
+        ];
+        assert!(handler.handle_batch(&records).is_ok());
+        let contents = output.contents();
+        assert!(contents.contains("msg1"));
+        assert!(contents.contains("msg2"));
     }
 }
