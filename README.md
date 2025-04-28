@@ -45,7 +45,7 @@ rust-loguru = "0.1.15" # Or Newer version
 
 ### Structured Logging (INFO-level with 5, 20, 50 key/value fields)
 <!-- Structured Logging -->
-![Structured Logging Benchmark](images/structured_logging.png)
+![Structured Logging Benchmark](images/structured_logging_benchmark.png)
 
 - **Overall Trend**: As field count increases, all implementations pay more cost, but differences widen.
 - **At 5 Fields**  
