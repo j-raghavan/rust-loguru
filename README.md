@@ -25,8 +25,81 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rust-loguru = "0.1.8" # Or Newer version
+rust-loguru = "0.1.15" # Or Newer version
 ```
+
+## Performance Benchmarks
+
+### Basic Logging (single-message overhead at DEBUG, INFO, ERROR levels)
+<!-- Basic Logging -->
+![Basic Logging Benchmark](images/basic_logging.png)
+
+- **Dominant Speed**: The **slog** implementation is effectively a no-op here, with means around 3 ns across all levels and counts.
+- **Loguru vs. slog**: Loguru is roughly **5,700 – 6,200%** slower than slog (e.g. at DEBUG_10, 5,712% slower), reflecting slog’s specialized zero-overhead design.
+- **Loguru vs. log crate**: Loguru is **57 – 84% faster** than the standard `log` crate (e.g. at DEBUG_1000, Loguru is ~84% faster).
+- **Loguru vs. tracing**: Loguru outperforms `tracing` by **~69–70%** at all levels (e.g. at INFO_100, ~69.6% faster).
+  
+  This means Loguru strikes a solid mid-ground: much lighter than the typical facade/structured crates, though still not as zero-cost as slog’s static no-op.
+
+---
+
+### Structured Logging (INFO-level with 5, 20, 50 key/value fields)
+<!-- Structured Logging -->
+![Structured Logging Benchmark](images/structured_logging.png)
+
+- **Overall Trend**: As field count increases, all implementations pay more cost, but differences widen.
+- **At 5 Fields**  
+  - Loguru is **~60% faster** than `log`, **~20% faster** than `tracing`, and **~6% faster** than `slog`.
+- **At 20 Fields**  
+  - Loguru’s lead grows: **~70% faster** than `log`, **~36% faster** than `tracing`, and **~24% faster** than `slog`.
+- **At 50 Fields**  
+  - Loguru remains the top performer, beating `log` by **~76%**, `tracing` by **~45%**, and `slog` by **~42%**.
+
+  Loguru’s design shows excellent scaling in the structured scenario—its median cost grows less steeply than the others.
+
+---
+
+### Concurrent Logging (INFO-level with 2, 4, 8, 16 threads)
+<!-- Concurrent Logging -->
+![Concurrent Logging Benchmark](images/concurrent_logging.png)
+
+- **Up to 8 Threads**: Loguru stays within **20–40%** faster than `log` and **10–30%** faster than `tracing`, though it trails **slog** by **~100–200%** (i.e., slog is up to twice as fast).
+- **At 16 Threads**:  
+  - Loguru’s relative efficiency dips slightly versus `log` (~17% faster) and versus `tracing` (~15% faster), while slog still leads (~104% advantage).
+
+  Under concurrency, Loguru maintains solid multi-threaded performance, though the no-lock nature of slog gives it an edge at high thread counts.
+
+---
+<!-- High-Volume Logging -->
+### High-Volume Logging (bulk emit of 100, 1 000, 10 000 messages)
+![High-Volume Logging Benchmark](images/high_volume_logging.png)
+
+- **Consistency**: Across 100→10 000 message runs, Loguru is **~40–60% faster** than `log`, and **~20–35%** faster than `tracing`.
+- **Compared to slog**: slog remains the fastest (by ~300–500%), but Loguru maintains clear separation from the middle pack.
+
+  For large bursts, Loguru’s buffering/emit path handles scale very well—roughly halving the cost of the standard facade or tracing.
+
+---
+
+<!-- File Rotation -->
+### File-Rotation (write and rotate files)
+![File Rotation Benchmark](images/file_rotation.png)
+
+- **Single Scenario**:  
+  - **Logged to Polled File** (our custom file_rotation) — mean: ~3 890 ns
+  - **log4rs** — ~5 120 ns  (Loguru is 24% faster than log4rs)
+  - **Loguru** — ~3 890 ns  
+  - **slog** — ~5 670 ns  (Loguru is 31% faster than slog)  
+  - **tracing** — ~6 430 ns (Loguru is 39% faster than tracing)
+
+  Loguru gives the best file-rotation performance of the group (about **24–39%** faster than the nearest rivals).
+
+---
+
+### **Bottom Line:**  
+Across every benchmark category, **Loguru** consistently outperforms the standard `log` crate and the `tracing` crate—often by **50–80%** in simple logging and **20–50%** in structured or high-volume scenarios—while not quite matching the zero-overhead peak of **slog**. For file rotation, it leads outright. If you need a high-throughput, low-latency Rust logger with structure and rotation, Loguru is a strong choice.
+
+
 
 ## Quick Start
 
@@ -499,6 +572,8 @@ thread::spawn(move || {
 - File handlers use buffered I/O for efficient disk operations
 - Consider using appropriate log levels in production to minimize overhead
 
+
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -639,38 +714,40 @@ assert_eq!(logger.level(), LogLevel::Info);
 ## TODO / Roadmap
 
 The following is the prioritized development plan:
+1. **Performance Improvements**
+   - Adopt the Zero Overhead of `slog` to bring down the performance numbers down
 
-1. **File Handler Enhancements**
+2. **File Handler Enhancements**
    - Time-based rotation (daily, hourly, etc.)
    - Retention policies (max age, max files, cleanup of old logs)
    - File permissions (configurable on creation)
    - Async file writing (true async I/O, not just async logging queue)
 
-2. **Configuration System Upgrades**
+3. **Configuration System Upgrades**
    - Environment variable overrides (e.g., `RUST_LOGURU_LEVEL=debug`)
    - File-based configuration (TOML/YAML/JSON config loading)
    - Preset configurations (easy-to-use, opinionated defaults for common scenarios)
 
-3. **Integration & Extensibility**
+4. **Integration & Extensibility**
    - Async runtime integration (fully implement tokio/async-std support, e.g., log flushing, context propagation)
    - Framework middleware (request/response logging for actix, axum, etc.)
    - Network/HTTP/in-memory handlers (implement or stub with clear errors/documentation)
 
-4. **Advanced Handler Features**
+5. **Advanced Handler Features**
    - Batching for all handlers (not just file, but also network, etc.)
    - Handler-specific filtering (allow each handler to filter by level, target, etc.)
    - Compression options (support for gzip, zip, etc. for rotated files)
 
-5. **Context & Scope Improvements**
+6. **Context & Scope Improvements**
    - Panic/exception capture in scopes (log panics with context and stack trace)
    - Async scope support (ensure scopes work seamlessly with async/await)
 
-6. **Documentation & Cleanup**
+7. **Documentation & Cleanup**
    - Remove legacy files (e.g., `src/formatter.rs`)
    - Document stubbed/unimplemented features (make it clear what is and isn't available)
    - Update README and module docs to reflect new features and usage patterns
 
-7. **Optional/Bonus**
+8. **Optional/Bonus**
    - File permission control for log files
    - Support for emojis/symbols in all formatters
    - More built-in format templates
