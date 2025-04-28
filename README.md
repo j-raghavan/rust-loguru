@@ -97,7 +97,7 @@ Loguru's design shows excellent scaling in structured scenarios—its performanc
 ---
 
 ### **Bottom Line:**  
-Across benchmark categories, **rust-loguru** shows varying performance characteristics: it consistently outperforms the `tracing` crate (by **~13-31%** in structured logging scenarios), and shows increasingly better performance compared to `slog` as complexity grows (from slightly slower at 5 fields to **~27%** faster at 50 fields). While the standard `log` crate shows lower times in some tests, it lacks the structured capabilities of the other libraries. For file rotation, rust-loguru leads outright, being **24-39%** faster than alternatives. If you need a high-throughput Rust logger that scales efficiently with complexity and offers excellent file rotation performance. There is scope for improvement, though not perfect, rust-loguru is a strong choice
+Across benchmark categories, **rust-loguru** shows varying performance characteristics: it consistently outperforms the `tracing` crate (by **~13-31%** in structured logging scenarios), and shows increasingly better performance compared to `slog` as complexity grows (from slightly slower at 5 fields to **~27%** faster at 50 fields). While the standard `log` crate shows lower times, it lacks the structured capabilities of the other libraries. For file rotation, rust-loguru is promising than alternatives.
 
 
 
