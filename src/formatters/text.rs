@@ -1,6 +1,6 @@
 use colored::Colorize;
 use std::fmt;
-use std::sync::Arc;
+// use std::sync::Arc;
 
 use crate::formatters::FormatFn;
 use crate::formatters::FormatterTrait;
