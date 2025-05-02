@@ -1,6 +1,5 @@
 use colored::Colorize;
 use std::fmt;
-// use std::sync::Arc;
 
 use crate::formatters::FormatFn;
 use crate::formatters::FormatterTrait;
@@ -244,10 +243,12 @@ mod tests {
     }
 
     #[test]
+
     fn test_text_formatter_custom_format() {
+        use std::sync::Arc;
         let mut formatter = TextFormatter::default();
         formatter.with_format(Arc::new(|record: &Record| {
-            format!("CUSTOM: {}", record.message())
+            "CUSTOM: ".to_string() + record.message()
         }));
         let record = Record::new(
             LogLevel::Info,
