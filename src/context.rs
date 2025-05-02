@@ -84,6 +84,11 @@ pub fn get_context_value(key: &str) -> Option<ContextValue> {
     })
 }
 
+/// Check if there is any context data available
+pub fn has_context() -> bool {
+    CONTEXT_STACK.with(|stack| !stack.borrow().is_empty())
+}
+
 // Async propagation helpers (stub)
 pub fn propagate_context_for_async() -> Arc<ContextMap> {
     Arc::new(current_context())

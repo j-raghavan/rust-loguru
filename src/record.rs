@@ -68,8 +68,26 @@ impl fmt::Debug for Record {
     }
 }
 
+// Add static strings at the top of the file after imports
+static UNKNOWN: &str = "unknown";
+
 impl Record {
-    /// Create a new log record
+    /// Create an empty record for pooling
+    pub(crate) fn empty() -> Self {
+        Self {
+            level: LogLevel::Info,
+            message: String::new(),
+            module: UNKNOWN.to_string(),
+            file: UNKNOWN.to_string(),
+            line: 0,
+            timestamp: Utc::now(),
+            metadata: HashMap::new(),
+            context: HashMap::new(),
+            format_fn: None,
+        }
+    }
+
+    /// Create a new log record with optimized allocations
     pub fn new(
         level: LogLevel,
         message: impl Into<String>,
@@ -77,15 +95,22 @@ impl Record {
         file: Option<String>,
         line: Option<u32>,
     ) -> Self {
-        let mut context_map = HashMap::new();
-        for (k, v) in context::current_context().into_iter() {
-            context_map.insert(k, context_value_to_json(v));
-        }
+        // Lazily build context only when needed
+        let context_map = if context::has_context() {
+            let mut map = HashMap::new();
+            for (k, v) in context::current_context().into_iter() {
+                map.insert(k, context_value_to_json(v));
+            }
+            map
+        } else {
+            HashMap::new()
+        };
+
         Self {
             level,
             message: message.into(),
-            module: module.unwrap_or_else(|| String::from("unknown")),
-            file: file.unwrap_or_else(|| String::from("unknown")),
+            module: module.unwrap_or_else(|| UNKNOWN.to_string()),
+            file: file.unwrap_or_else(|| UNKNOWN.to_string()),
             line: line.unwrap_or(0),
             timestamp: Utc::now(),
             metadata: HashMap::new(),
@@ -246,6 +271,11 @@ impl Record {
     /// Returns the number of metadata entries in the record.
     pub fn metadata_len(&self) -> usize {
         self.metadata.len()
+    }
+
+    /// Get the location as a string in the format "file:line"
+    pub fn location(&self) -> String {
+        format!("{}:{}", self.file(), self.line())
     }
 }
 

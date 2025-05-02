@@ -8,6 +8,7 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 use parking_lot::RwLock;
 use rust_loguru::formatters::Formatter;
 use rust_loguru::handler::Handler;
+use rust_loguru::handler::HandlerError;
 use rust_loguru::handler::NullHandler;
 use rust_loguru::level::LogLevel;
 use rust_loguru::logger::Logger;
@@ -65,7 +66,7 @@ impl Handler for CountingHandler {
         self.formatter = formatter;
     }
 
-    fn handle(&self, _record: &Record) -> Result<(), String> {
+    fn handle(&self, _record: &Record) -> Result<(), HandlerError> {
         self.count.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }

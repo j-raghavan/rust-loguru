@@ -205,7 +205,7 @@ fn test_file_handler_formatting() {
 
     let handler = FileHandler::new(&log_file)
         .expect("Failed to create file handler")
-        .with_formatter(Formatter::text().with_pattern("{level} - {message}"))
+        .with_pattern("{level} - {message}")
         .with_colors(false);
 
     let record = Record::new(

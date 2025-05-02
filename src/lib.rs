@@ -57,6 +57,7 @@ pub mod logger;
 #[doc(hidden)]
 pub mod macros;
 pub mod record;
+pub mod record_pool;
 pub mod scope;
 pub mod test_utils;
 
@@ -70,6 +71,7 @@ pub use handler::Handler;
 pub use level::LogLevel;
 pub use logger::{global, init, log, Logger};
 pub use record::Record;
+pub use record_pool::{PooledRecord, RecordPool};
 pub use scope::{ScopeError, ScopeGuard};
 
 // Re-export log crate types for compatibility
