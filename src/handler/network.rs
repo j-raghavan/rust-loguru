@@ -7,7 +7,7 @@ use crate::formatters::Formatter;
 use crate::level::LogLevel;
 use crate::record::Record;
 
-use super::{Handler, HandlerFilter};
+use super::{Handler, HandlerError, HandlerFilter};
 use std::fmt::Debug;
 
 /// A handler that writes log records to a network socket
@@ -15,10 +15,11 @@ pub struct NetworkHandler {
     level: LogLevel,
     enabled: bool,
     formatter: Formatter,
-    stream: Arc<Mutex<TcpStream>>,
+    stream: Arc<Mutex<Option<TcpStream>>>,
     filter: Option<HandlerFilter>,
     batch_buffer: Arc<Mutex<Vec<Record>>>,
     batch_size: Option<usize>,
+    addr: String,
 }
 
 impl NetworkHandler {
@@ -27,10 +28,11 @@ impl NetworkHandler {
             level,
             enabled: true,
             formatter: Formatter::text(),
-            stream: Arc::new(Mutex::new(stream)),
+            stream: Arc::new(Mutex::new(Some(stream))),
             filter: None,
             batch_buffer: Arc::new(Mutex::new(Vec::new())),
             batch_size: None,
+            addr: String::new(),
         }
     }
 
@@ -74,7 +76,7 @@ impl NetworkHandler {
 }
 
 impl Handler for NetworkHandler {
-    fn handle(&self, record: &Record) -> Result<(), String> {
+    fn handle(&self, record: &Record) -> Result<(), HandlerError> {
         if !self.enabled || record.level() < self.level {
             return Ok(());
         }
@@ -94,13 +96,13 @@ impl Handler for NetworkHandler {
             return Ok(());
         }
         let formatted = self.formatter.format(record);
-        let mut stream = self
-            .stream
-            .lock()
-            .map_err(|e| format!("Failed to lock stream: {}", e))?;
-        writeln!(stream, "{}", formatted)
-            .map_err(|e| format!("Failed to write to network: {}", e))?;
-        Ok(())
+        if let Some(ref mut stream) = self.stream.lock().unwrap().as_mut() {
+            write!(stream, "{}", formatted).map_err(HandlerError::IoError)?;
+            stream.flush().map_err(HandlerError::IoError)?;
+            Ok(())
+        } else {
+            Err(HandlerError::NotInitialized)
+        }
     }
 
     fn level(&self) -> LogLevel {
@@ -135,38 +137,48 @@ impl Handler for NetworkHandler {
         self.filter.as_ref()
     }
 
-    fn handle_batch(&self, records: &[Record]) -> Result<(), String> {
-        let mut stream = self
-            .stream
-            .lock()
-            .map_err(|e| format!("Failed to lock stream: {}", e))?;
-        for record in records {
-            if !self.enabled || record.level() < self.level {
-                continue;
-            }
-            if let Some(filter) = &self.filter {
-                if !(filter)(record) {
+    fn handle_batch(&self, records: &[Record]) -> Result<(), HandlerError> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        if let Some(ref mut stream) = self.stream.lock().unwrap().as_mut() {
+            for record in records {
+                if record.level() < self.level {
                     continue;
                 }
+                if let Some(filter) = &self.filter {
+                    if !(filter)(record) {
+                        continue;
+                    }
+                }
+                let formatted = self.formatter.format(record);
+                write!(stream, "{}", formatted).map_err(HandlerError::IoError)?;
             }
-            let formatted = self.formatter.format(record);
-            if let Err(e) = writeln!(stream, "{}", formatted) {
-                return Err(format!("Failed to write to network: {}", e));
-            }
+            stream.flush().map_err(HandlerError::IoError)?;
+            Ok(())
+        } else {
+            Err(HandlerError::NotInitialized)
         }
+    }
+
+    fn init(&mut self) -> Result<(), HandlerError> {
+        let stream = TcpStream::connect(&self.addr).map_err(HandlerError::IoError)?;
+        *self.stream.lock().unwrap() = Some(stream);
         Ok(())
     }
 
-    fn init(&mut self) -> Result<(), String> {
-        Ok(())
+    fn flush(&self) -> Result<(), HandlerError> {
+        if let Some(ref mut stream) = self.stream.lock().unwrap().as_mut() {
+            stream.flush().map_err(HandlerError::IoError)?;
+            Ok(())
+        } else {
+            Err(HandlerError::NotInitialized)
+        }
     }
 
-    fn flush(&self) -> Result<(), String> {
-        Ok(())
-    }
-
-    fn shutdown(&mut self) -> Result<(), String> {
-        Ok(())
+    fn shutdown(&mut self) -> Result<(), HandlerError> {
+        self.flush()
     }
 }
 
@@ -191,6 +203,7 @@ impl Clone for NetworkHandler {
             filter: self.filter.clone(),
             batch_buffer: self.batch_buffer.clone(),
             batch_size: self.batch_size,
+            addr: self.addr.clone(),
         }
     }
 }
@@ -208,22 +221,34 @@ mod tests {
         let (tx, rx) = channel();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
+
+        // Start server thread that collects all lines until connection closes
         thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut reader = BufReader::new(&mut stream);
             let mut lines = Vec::new();
-            for _ in 0..3 {
+            loop {
                 let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                lines.push(line);
+                match reader.read_line(&mut line) {
+                    Ok(0) | Err(_) => break, // Connection closed or error
+                    Ok(_) => {
+                        if !line.is_empty() {
+                            lines.push(line);
+                        }
+                    }
+                }
             }
             tx.send(lines).unwrap();
         });
+
+        // Create and configure handler
         let stream = TcpStream::connect(addr).unwrap();
         let filter = std::sync::Arc::new(|record: &Record| record.message().contains("pass"));
         let handler = NetworkHandler::new(stream, LogLevel::Info)
             .with_filter(filter)
             .with_batching(2);
+
+        // Send test records
         let record1 = Record::new(
             LogLevel::Info,
             "should pass",
@@ -240,18 +265,25 @@ mod tests {
         );
         let record3 = Record::new(
             LogLevel::Info,
-            "should pass2",
+            "should pass again",
             None::<String>,
             None::<String>,
             None,
         );
+
+        // Handle records and flush
         assert!(handler.handle(&record1).is_ok());
         assert!(handler.handle(&record2).is_ok());
         assert!(handler.handle(&record3).is_ok());
         handler.flush().unwrap();
+
+        // Close the connection to signal server thread
+        drop(handler);
+
+        // Verify results
         let lines = rx.recv().unwrap();
         assert!(lines.iter().any(|l| l.contains("should pass")));
-        assert!(lines.iter().any(|l| l.contains("should pass2")));
+        assert!(lines.iter().any(|l| l.contains("should pass again")));
         assert!(!lines.iter().any(|l| l.contains("should fail")));
     }
 }

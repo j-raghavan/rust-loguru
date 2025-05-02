@@ -1,14 +1,10 @@
-use chrono::Local;
 use colored::*;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::formatters::FormatterTrait;
+use crate::formatters::{FormatFn, FormatterTrait};
 use crate::level::LogLevel;
 use crate::record::Record;
-
-/// A type alias for a format function
-pub type FormatFn = Arc<dyn Fn(&Record) -> String + Send + Sync>;
 
 /// A template formatter that formats log records using a template
 #[derive(Clone)]
@@ -23,10 +19,16 @@ pub struct TemplateFormatter {
     include_module: bool,
     /// Whether to include file locations in the output
     include_location: bool,
+    /// Whether to include metadata in the output
+    include_metadata: bool,
+    /// Whether to include structured data in the output
+    include_data: bool,
     /// The format pattern to use
     pattern: String,
     /// A custom format function
     format_fn: Option<FormatFn>,
+    /// Pre-computed placeholder positions for faster formatting
+    placeholders: Vec<(usize, usize, String)>,
 }
 
 impl fmt::Debug for TemplateFormatter {
@@ -37,6 +39,8 @@ impl fmt::Debug for TemplateFormatter {
             .field("include_level", &self.include_level)
             .field("include_module", &self.include_module)
             .field("include_location", &self.include_location)
+            .field("include_metadata", &self.include_metadata)
+            .field("include_data", &self.include_data)
             .field("pattern", &self.pattern)
             .field("format_fn", &"<format_fn>")
             .finish()
@@ -45,138 +49,253 @@ impl fmt::Debug for TemplateFormatter {
 
 impl Default for TemplateFormatter {
     fn default() -> Self {
-        Self {
+        let pattern =
+            "{timestamp} {level} {module} {location} {message} {metadata} {data}".to_string();
+        let mut formatter = Self {
             use_colors: true,
             include_timestamp: true,
             include_level: true,
             include_module: true,
             include_location: true,
-            pattern: "{timestamp} {level} {module} {location} {message}".to_string(),
+            include_metadata: true,
+            include_data: true,
+            pattern: pattern.clone(),
             format_fn: None,
-        }
+            placeholders: Vec::new(),
+        };
+        formatter.update_placeholders();
+        formatter
     }
 }
 
 impl TemplateFormatter {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-impl FormatterTrait for TemplateFormatter {
-    fn format(&self, record: &Record) -> String {
-        if let Some(format_fn) = &self.format_fn {
-            return format_fn(record);
-        }
-
-        let mut output = self.pattern.clone();
-
-        if self.include_timestamp {
-            let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-            output = output.replace("{timestamp}", &timestamp.to_string());
-        } else {
-            output = output.replace("{timestamp}", "");
-        }
-
-        if self.include_level {
-            let level = record.level().to_string();
-            if self.use_colors {
-                let colored_level = match record.level() {
-                    LogLevel::Error => level.red().to_string(),
-                    LogLevel::Warning => level.yellow().to_string(),
-                    LogLevel::Info => level.green().to_string(),
-                    LogLevel::Debug => level.blue().to_string(),
-                    LogLevel::Trace => level.cyan().to_string(),
-                    LogLevel::Success => level.green().to_string(),
-                    LogLevel::Critical => level.red().to_string(),
-                };
-                output = output.replace("{level}", &colored_level);
-            } else {
-                output = output.replace("{level}", &level);
-            }
-        } else {
-            output = output.replace("{level}", "");
-        }
-
-        if self.include_module {
-            output = output.replace("{module}", record.module());
-        } else {
-            output = output.replace("{module}", "");
-        }
-
-        if self.include_location {
-            let location = format!("{}:{}", record.file(), record.line());
-            output = output.replace("{location}", &location);
-        } else {
-            output = output.replace("{location}", "");
-        }
-
-        output = output.replace("{message}", record.message());
-
-        // Clean up any extra spaces
-        output = output.split_whitespace().collect::<Vec<_>>().join(" ");
-
-        // Ensure the output has a newline at the end
-        if !output.ends_with('\n') {
-            format!("{}\n", output.trim())
-        } else {
-            output.trim().to_string()
-        }
+    pub fn new(pattern: impl Into<String>) -> Self {
+        let pattern = pattern.into();
+        let mut formatter = Self {
+            use_colors: true,
+            include_timestamp: pattern.contains("{timestamp}"),
+            include_level: pattern.contains("{level}"),
+            include_module: pattern.contains("{module}"),
+            include_location: pattern.contains("{location}"),
+            include_metadata: pattern.contains("{metadata}"),
+            include_data: pattern.contains("{data}"),
+            pattern,
+            format_fn: None,
+            placeholders: Vec::new(),
+        };
+        formatter.update_placeholders();
+        formatter
     }
 
-    fn with_colors(mut self, use_colors: bool) -> Self {
-        self.use_colors = use_colors;
-        self
-    }
-
-    fn with_timestamp(mut self, include_timestamp: bool) -> Self {
-        self.include_timestamp = include_timestamp;
-        self
-    }
-
-    fn with_level(mut self, include_level: bool) -> Self {
-        self.include_level = include_level;
-        self
-    }
-
-    fn with_module(mut self, include_module: bool) -> Self {
-        self.include_module = include_module;
-        self
-    }
-
-    fn with_location(mut self, include_location: bool) -> Self {
-        self.include_location = include_location;
-        self
-    }
-
-    fn with_pattern(mut self, pattern: impl Into<String>) -> Self {
-        self.pattern = pattern.into();
-        // Update the internal flags based on the pattern content
+    fn update_flags_from_pattern(&mut self) {
         self.include_timestamp = self.pattern.contains("{timestamp}");
         self.include_level = self.pattern.contains("{level}");
         self.include_module = self.pattern.contains("{module}");
         self.include_location = self.pattern.contains("{location}");
+        self.include_metadata = self.pattern.contains("{metadata}");
+        self.include_data = self.pattern.contains("{data}");
+    }
+
+    fn update_placeholders(&mut self) {
+        self.placeholders.clear();
+        let mut pos = 0;
+        while let Some(start) = self.pattern[pos..].find('{') {
+            if let Some(end) = self.pattern[pos + start..].find('}') {
+                let placeholder = self.pattern[pos + start + 1..pos + start + end].to_string();
+                self.placeholders
+                    .push((pos + start, pos + start + end + 1, placeholder));
+                pos += start + end + 1;
+            } else {
+                break;
+            }
+        }
+    }
+
+    pub fn with_colors(mut self, use_colors: bool) -> Self {
+        self.use_colors = use_colors;
         self
     }
 
-    fn with_format<F>(mut self, format_fn: F) -> Self
+    pub fn with_timestamp(mut self, include_timestamp: bool) -> Self {
+        self.include_timestamp = include_timestamp;
+        self
+    }
+
+    pub fn with_level(mut self, include_level: bool) -> Self {
+        self.include_level = include_level;
+        self
+    }
+
+    pub fn with_module(mut self, include_module: bool) -> Self {
+        self.include_module = include_module;
+        self
+    }
+
+    pub fn with_location(mut self, include_location: bool) -> Self {
+        self.include_location = include_location;
+        self
+    }
+
+    pub fn with_pattern(mut self, pattern: impl Into<String>) -> Self {
+        self.pattern = pattern.into();
+        self.update_flags_from_pattern();
+        self.update_placeholders();
+        self
+    }
+
+    pub fn with_format<F>(mut self, format_fn: F) -> Self
     where
         F: Fn(&Record) -> String + Send + Sync + 'static,
     {
         self.format_fn = Some(Arc::new(format_fn));
         self
     }
+}
+
+impl FormatterTrait for TemplateFormatter {
+    fn fmt(&self, record: &Record) -> String {
+        if let Some(format_fn) = &self.format_fn {
+            // Return custom format as-is without modifications
+            let result = format_fn(record);
+            if result.ends_with('\n') {
+                result[..result.len() - 1].to_string()
+            } else {
+                result
+            }
+        } else {
+            // Pre-allocate with estimated capacity
+            let mut result = String::with_capacity(self.pattern.len() * 2);
+            let mut last_pos = 0;
+
+            // Use pre-computed placeholder positions for single-pass replacement
+            for &(start, end, ref placeholder) in &self.placeholders {
+                result.push_str(&self.pattern[last_pos..start]);
+
+                match placeholder.as_str() {
+                    "timestamp" => {
+                        if self.include_timestamp {
+                            result.push_str(&record.timestamp().to_rfc3339())
+                        }
+                    }
+                    "level" => {
+                        if self.include_level {
+                            let level_str = record.level().to_string();
+                            if self.use_colors {
+                                result.push_str(&match record.level() {
+                                    LogLevel::Trace => level_str.white().to_string(),
+                                    LogLevel::Debug => level_str.blue().to_string(),
+                                    LogLevel::Info => level_str.green().to_string(),
+                                    LogLevel::Warning => level_str.yellow().to_string(),
+                                    LogLevel::Error => level_str.red().to_string(),
+                                    LogLevel::Critical => level_str.red().bold().to_string(),
+                                    LogLevel::Success => level_str.green().bold().to_string(),
+                                });
+                            } else {
+                                result.push_str(&level_str);
+                            }
+                        }
+                    }
+                    "module" => {
+                        if self.include_module {
+                            let module = record.module();
+                            if module != "unknown" {
+                                result.push_str(module);
+                            }
+                        }
+                    }
+                    "location" => {
+                        if self.include_location {
+                            // Only include file and line, not module
+                            let file = record.file();
+                            let line = record.line();
+                            if file != "unknown" {
+                                result.push_str(&format!("{}:{}", file, line));
+                            }
+                        }
+                    }
+                    "message" => {
+                        result.push_str(record.message());
+                    }
+                    "metadata" => {
+                        if self.include_metadata {
+                            let metadata = record.metadata();
+                            if !metadata.is_empty() {
+                                let metadata_str = metadata
+                                    .iter()
+                                    .map(|(k, v)| format!("{}={}", k, v))
+                                    .collect::<Vec<_>>()
+                                    .join(" ");
+                                result.push_str(&metadata_str);
+                            }
+                        }
+                    }
+                    "data" => {
+                        if self.include_data {
+                            let metadata = record.metadata();
+                            if !metadata.is_empty() {
+                                let data_str = metadata
+                                    .iter()
+                                    .filter(|(k, _)| k.starts_with("data."))
+                                    .map(|(k, v)| format!("{}={}", k, v))
+                                    .collect::<Vec<_>>()
+                                    .join(" ");
+                                if !data_str.is_empty() {
+                                    result.push_str(&data_str);
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        result.push_str(&self.pattern[start..end]);
+                    }
+                }
+                last_pos = end;
+            }
+
+            // Add remaining pattern content
+            result.push_str(&self.pattern[last_pos..]);
+
+            // Only add newline for default formatting
+            if !result.ends_with('\n') {
+                result.push('\n');
+            }
+
+            result
+        }
+    }
+
+    fn with_colors(&mut self, use_colors: bool) {
+        self.use_colors = use_colors;
+    }
+
+    fn with_timestamp(&mut self, include_timestamp: bool) {
+        self.include_timestamp = include_timestamp;
+    }
+
+    fn with_level(&mut self, include_level: bool) {
+        self.include_level = include_level;
+    }
+
+    fn with_module(&mut self, include_module: bool) {
+        self.include_module = include_module;
+    }
+
+    fn with_location(&mut self, include_location: bool) {
+        self.include_location = include_location;
+    }
+
+    fn with_pattern(&mut self, pattern: String) {
+        self.pattern = pattern;
+        self.update_flags_from_pattern();
+        self.update_placeholders();
+    }
+
+    fn with_format(&mut self, format_fn: FormatFn) {
+        self.format_fn = Some(format_fn);
+    }
 
     fn box_clone(&self) -> Box<dyn FormatterTrait + Send + Sync> {
-        Box::new(Self {
-            use_colors: self.use_colors,
-            include_timestamp: self.include_timestamp,
-            include_level: self.include_level,
-            include_module: self.include_module,
-            include_location: self.include_location,
-            pattern: self.pattern.clone(),
-            format_fn: self.format_fn.clone(),
-        })
+        Box::new(self.clone())
     }
 }
 
@@ -195,7 +314,7 @@ mod tests {
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = formatter.fmt(&record);
         assert!(formatted.contains("Test message"));
         assert!(formatted.contains("INFO"));
         assert!(formatted.contains("test"));
@@ -213,7 +332,7 @@ mod tests {
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = formatter.fmt(&record);
         assert!(formatted.contains("Test message"));
         assert!(formatted.contains("INFO"));
         assert!(formatted.contains("test"));
@@ -232,7 +351,7 @@ mod tests {
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = formatter.fmt(&record);
         assert!(formatted.contains("Test message"));
         assert!(formatted.contains("INFO"));
         assert!(formatted.contains("test"));
@@ -251,7 +370,7 @@ mod tests {
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = formatter.fmt(&record);
         assert!(formatted.contains("Test message"));
         assert!(!formatted.contains("INFO"));
         assert!(formatted.contains("test"));
@@ -264,16 +383,16 @@ mod tests {
         let record = Record::new(
             LogLevel::Info,
             "Test message",
-            Some("test".to_string()),
-            Some("main.rs".to_string()),
+            Some("test_module".to_string()),
+            Some("test.rs".to_string()),
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = formatter.fmt(&record);
         assert!(formatted.contains("Test message"));
         assert!(formatted.contains("INFO"));
-        assert!(!formatted.contains("test"));
-        assert!(formatted.contains("main.rs:42"));
+        assert!(!formatted.contains("test_module"));
+        assert!(formatted.contains("test.rs:42"));
     }
 
     #[test]
@@ -287,7 +406,7 @@ mod tests {
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = formatter.fmt(&record);
         assert!(formatted.contains("Test message"));
         assert!(formatted.contains("INFO"));
         assert!(formatted.contains("test"));
@@ -297,16 +416,16 @@ mod tests {
     #[test]
     fn test_template_formatter_custom_format() {
         let formatter = TemplateFormatter::default()
-            .with_format(|record| format!("CUSTOM: {}", record.message()));
+            .with_format(|record: &Record| format!("CUSTOM: {}", record.message()));
         let record = Record::new(
             LogLevel::Info,
             "Test message",
-            Some("test".to_string()),
+            Some("test_module".to_string()),
             Some("test.rs".to_string()),
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = formatter.fmt(&record);
         assert_eq!(formatted, "CUSTOM: Test message");
     }
 }

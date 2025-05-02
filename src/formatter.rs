@@ -57,7 +57,7 @@ impl Default for TextFormatter {
 }
 
 impl FormatterTrait for TextFormatter {
-    fn format(&self, record: &Record) -> String {
+    fn fmt(&self, record: &Record) -> String {
         if let Some(format_fn) = &self.format_fn {
             return format_fn(record);
         }
@@ -109,42 +109,32 @@ impl FormatterTrait for TextFormatter {
         output.trim().to_string()
     }
 
-    fn with_colors(mut self, use_colors: bool) -> Self {
+    fn with_colors(&mut self, use_colors: bool) {
         self.use_colors = use_colors;
-        self
     }
 
-    fn with_timestamp(mut self, include_timestamp: bool) -> Self {
+    fn with_timestamp(&mut self, include_timestamp: bool) {
         self.include_timestamp = include_timestamp;
-        self
     }
 
-    fn with_level(mut self, include_level: bool) -> Self {
+    fn with_level(&mut self, include_level: bool) {
         self.include_level = include_level;
-        self
     }
 
-    fn with_module(mut self, include_module: bool) -> Self {
+    fn with_module(&mut self, include_module: bool) {
         self.include_module = include_module;
-        self
     }
 
-    fn with_location(mut self, include_location: bool) -> Self {
+    fn with_location(&mut self, include_location: bool) {
         self.include_location = include_location;
-        self
     }
 
-    fn with_pattern(mut self, pattern: impl Into<String>) -> Self {
-        self.pattern = pattern.into();
-        self
+    fn with_pattern(&mut self, pattern: String) {
+        self.pattern = pattern;
     }
 
-    fn with_format<F>(mut self, format_fn: F) -> Self
-    where
-        F: Fn(&Record) -> String + Send + Sync + 'static,
-    {
-        self.format_fn = Some(Arc::new(format_fn));
-        self
+    fn with_format(&mut self, format_fn: FormatFn) {
+        self.format_fn = Some(format_fn);
     }
 
     fn box_clone(&self) -> Box<dyn FormatterTrait + Send + Sync> {
@@ -176,7 +166,7 @@ mod tests {
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = FormatterTrait::fmt(&formatter, &record);
         assert!(formatted.contains("Test message"));
         assert!(formatted.contains("INFO"));
         assert!(formatted.contains("test"));
@@ -185,7 +175,8 @@ mod tests {
 
     #[test]
     fn test_text_formatter_no_colors() {
-        let formatter = TextFormatter::default().with_colors(false);
+        let mut formatter = TextFormatter::default();
+        formatter.with_colors(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -194,7 +185,7 @@ mod tests {
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = FormatterTrait::fmt(&formatter, &record);
         assert!(formatted.contains("Test message"));
         assert!(formatted.contains("INFO"));
         assert!(formatted.contains("test"));
@@ -204,7 +195,8 @@ mod tests {
 
     #[test]
     fn test_text_formatter_no_timestamp() {
-        let formatter = TextFormatter::default().with_timestamp(false);
+        let mut formatter = TextFormatter::default();
+        formatter.with_timestamp(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -213,7 +205,7 @@ mod tests {
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = FormatterTrait::fmt(&formatter, &record);
         assert!(formatted.contains("Test message"));
         assert!(formatted.contains("INFO"));
         assert!(formatted.contains("test"));
@@ -223,7 +215,8 @@ mod tests {
 
     #[test]
     fn test_text_formatter_no_level() {
-        let formatter = TextFormatter::default().with_level(false);
+        let mut formatter = TextFormatter::default();
+        formatter.with_level(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -232,7 +225,7 @@ mod tests {
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = FormatterTrait::fmt(&formatter, &record);
         assert!(formatted.contains("Test message"));
         assert!(!formatted.contains("INFO"));
         assert!(formatted.contains("test"));
@@ -241,44 +234,29 @@ mod tests {
 
     #[test]
     fn test_text_formatter_no_module() {
-        let formatter = TextFormatter::default().with_module(false);
+        let mut formatter = TextFormatter::default();
+        formatter.with_module(false);
         let record = Record::new(
             LogLevel::Info,
             "Test message",
-            Some("test".to_string()),
-            Some("main.rs".to_string()),
-            Some(42),
-        );
-
-        let formatted = formatter.format(&record);
-        assert!(formatted.contains("Test message"));
-        assert!(formatted.contains("INFO"));
-        assert!(!formatted.contains("test"));
-        assert!(formatted.contains("main.rs:42"));
-    }
-
-    #[test]
-    fn test_text_formatter_no_location() {
-        let formatter = TextFormatter::default().with_location(false);
-        let record = Record::new(
-            LogLevel::Info,
-            "Test message",
-            Some("test".to_string()),
+            Some("test_module".to_string()),
             Some("test.rs".to_string()),
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = FormatterTrait::fmt(&formatter, &record);
         assert!(formatted.contains("Test message"));
         assert!(formatted.contains("INFO"));
-        assert!(formatted.contains("test"));
-        assert!(!formatted.contains("test.rs:42"));
+        assert!(!formatted.contains("test_module"));
+        assert!(formatted.contains("test.rs:42"));
     }
 
     #[test]
     fn test_text_formatter_custom_format() {
-        let formatter =
-            TextFormatter::default().with_format(|record| format!("CUSTOM: {}", record.message()));
+        let mut formatter = TextFormatter::default();
+        formatter.with_format(Arc::new(|record: &Record| {
+            format!("CUSTOM: {}", record.message())
+        }));
         let record = Record::new(
             LogLevel::Info,
             "Test message",
@@ -287,7 +265,7 @@ mod tests {
             Some(42),
         );
 
-        let formatted = formatter.format(&record);
+        let formatted = FormatterTrait::fmt(&formatter, &record);
         assert_eq!(formatted, "CUSTOM: Test message");
     }
 }

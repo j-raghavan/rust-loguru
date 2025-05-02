@@ -9,7 +9,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::sync::Mutex;
 
-use super::{Handler, HandlerFilter};
+use super::{Handler, HandlerError, HandlerFilter};
 
 /// A handler that writes log records to a file
 pub struct FileHandler {
@@ -87,7 +87,9 @@ impl FileHandler {
         Ok(Self {
             level: LogLevel::Info,
             enabled: true,
-            formatter: Formatter::text(),
+            formatter: Formatter::template(
+                "{timestamp} {level} {module} {location} {message} {metadata} {data}",
+            ),
             file: Mutex::new(Some(file)),
             path,
             max_size: None,
@@ -114,11 +116,9 @@ impl FileHandler {
         self
     }
 
-    pub fn with_pattern(self, pattern: impl Into<String>) -> Self {
-        let mut handler = self;
-        let formatter = handler.formatter.with_pattern(pattern);
-        handler.formatter = formatter;
-        handler
+    pub fn with_pattern(mut self, pattern: impl Into<String>) -> Self {
+        self.formatter = Formatter::template(pattern);
+        self
     }
 
     pub fn with_format<F>(mut self, format_fn: F) -> Self
@@ -155,7 +155,7 @@ impl FileHandler {
             let mut file_guard = self
                 .file
                 .lock()
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "Failed to lock file mutex"))?;
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
             if let Some(file) = file_guard.as_ref() {
                 let metadata = file.metadata()?;
@@ -213,7 +213,7 @@ impl FileHandler {
 }
 
 impl Handler for FileHandler {
-    fn handle(&self, record: &Record) -> Result<(), String> {
+    fn handle(&self, record: &Record) -> Result<(), HandlerError> {
         if !self.enabled || record.level() < self.level {
             return Ok(());
         }
@@ -223,7 +223,9 @@ impl Handler for FileHandler {
             }
         }
         if let Some(batch_size) = self.batch_size {
-            let mut buffer = self.batch_buffer.lock().unwrap();
+            let mut buffer = self.batch_buffer.lock().map_err(|e| {
+                HandlerError::IoError(io::Error::new(io::ErrorKind::Other, e.to_string()))
+            })?;
             buffer.push(record.clone());
             if buffer.len() >= batch_size {
                 let batch = buffer.drain(..).collect::<Vec<_>>();
@@ -234,26 +236,17 @@ impl Handler for FileHandler {
         }
         let formatted = self.formatter.format(record);
         if let Err(e) = self.rotate_if_needed() {
-            return Err(format!("Failed to rotate log file: {}", e));
+            return Err(HandlerError::IoError(e));
         }
-        let mut file_guard = self
-            .file
-            .lock()
-            .map_err(|e| format!("Failed to lock file mutex: {}", e))?;
-        if let Some(file) = file_guard.as_mut() {
-            match write!(file, "{}", formatted) {
-                Ok(_) => Ok(()),
-                Err(e) => {
-                    // Check if it's a permission error
-                    if e.kind() == io::ErrorKind::PermissionDenied {
-                        Err(format!("Permission denied: {}", e))
-                    } else {
-                        Err(format!("Failed to write to file: {}", e))
-                    }
-                }
-            }
+        let mut file_guard = self.file.lock().map_err(|e| {
+            HandlerError::IoError(io::Error::new(io::ErrorKind::Other, e.to_string()))
+        })?;
+        if let Some(ref mut file) = *file_guard {
+            write!(file, "{}", formatted).map_err(HandlerError::IoError)?;
+            file.flush().map_err(HandlerError::IoError)?;
+            Ok(())
         } else {
-            Err("No file handle available".to_string())
+            Err(HandlerError::NotInitialized)
         }
     }
 
@@ -289,11 +282,10 @@ impl Handler for FileHandler {
         self.filter.as_ref()
     }
 
-    fn handle_batch(&self, records: &[Record]) -> Result<(), String> {
-        let mut file_guard = self
-            .file
-            .lock()
-            .map_err(|e| format!("Failed to lock file mutex: {}", e))?;
+    fn handle_batch(&self, records: &[Record]) -> Result<(), HandlerError> {
+        let mut file_guard = self.file.lock().map_err(|e| {
+            HandlerError::IoError(io::Error::new(io::ErrorKind::Other, e.to_string()))
+        })?;
         for record in records {
             if !self.enabled || record.level() < self.level {
                 continue;
@@ -305,31 +297,38 @@ impl Handler for FileHandler {
             }
             let formatted = self.formatter.format(record);
             if let Err(e) = self.rotate_if_needed() {
-                return Err(format!("Failed to rotate log file: {}", e));
+                return Err(HandlerError::IoError(e));
             }
-            if let Some(file) = file_guard.as_mut() {
-                if let Err(e) = write!(file, "{}", formatted) {
-                    return Err(format!("Failed to write to file: {}", e));
-                }
+            if let Some(ref mut file) = file_guard.as_mut() {
+                write!(file, "{}", formatted).map_err(HandlerError::IoError)?;
             }
+        }
+        if let Some(ref mut file) = file_guard.as_mut() {
+            file.flush().map_err(HandlerError::IoError)?;
         }
         Ok(())
     }
 
-    fn init(&mut self) -> Result<(), String> {
+    fn init(&mut self) -> Result<(), HandlerError> {
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)
+            .map_err(HandlerError::IoError)?;
+        *self.file.lock().unwrap() = Some(file);
         Ok(())
     }
 
-    fn flush(&self) -> Result<(), String> {
-        let mut file_guard = self.file.lock().unwrap();
-        if let Some(file) = file_guard.as_mut() {
-            file.flush()
-                .map_err(|e| format!("Failed to flush file: {}", e))?;
+    fn flush(&self) -> Result<(), HandlerError> {
+        if let Some(ref mut file) = self.file.lock().unwrap().as_mut() {
+            file.flush().map_err(HandlerError::IoError)?;
+            Ok(())
+        } else {
+            Err(HandlerError::NotInitialized)
         }
-        Ok(())
     }
 
-    fn shutdown(&mut self) -> Result<(), String> {
+    fn shutdown(&mut self) -> Result<(), HandlerError> {
         self.flush()
     }
 }

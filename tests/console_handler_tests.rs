@@ -144,7 +144,7 @@ fn test_console_handler_colors() {
 fn test_console_handler_formatting() {
     let output = TestOutput::new();
     let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()))
-        .with_formatter(Formatter::text().with_pattern("{level} - {message}"))
+        .with_pattern("{level} - {message}")
         .with_colors(false);
 
     let record = Record::new(
@@ -163,7 +163,8 @@ fn test_console_handler_formatting() {
 #[test]
 fn test_console_handler_with_metadata() -> io::Result<()> {
     let output = TestOutput::new();
-    let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()));
+    let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()))
+        .with_pattern("{level} - {message} {metadata}");
 
     let record = Record::new(
         LogLevel::Info,
@@ -186,8 +187,7 @@ fn test_console_handler_with_metadata() -> io::Result<()> {
 fn test_console_handler_with_json_format() -> io::Result<()> {
     let output = TestOutput::new();
     let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()))
-        .with_pattern(r#"{{"level":"{level}","message":"{message}","module":"{module}"}}"#)
-        .with_colors(false);
+        .with_formatter(Formatter::json());
 
     let record = Record::new(
         LogLevel::Info,

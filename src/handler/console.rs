@@ -6,7 +6,7 @@ use crate::formatters::Formatter;
 use crate::level::LogLevel;
 use crate::record::Record;
 
-use super::{Handler, HandlerFilter};
+use super::{Handler, HandlerError, HandlerFilter};
 
 /// A wrapper around a writer that implements Debug
 pub struct DebugWrite {
@@ -102,11 +102,9 @@ impl ConsoleHandler {
     }
 
     /// Sets a custom format pattern.
-    pub fn with_pattern(self, pattern: impl Into<String>) -> Self {
-        let mut handler = self;
-        let formatter = handler.formatter.with_pattern(pattern);
-        handler.formatter = formatter;
-        handler
+    pub fn with_pattern(mut self, pattern: impl Into<String>) -> Self {
+        self.formatter = Formatter::template(pattern);
+        self
     }
 
     /// Sets a custom format function for the handler.
@@ -136,7 +134,7 @@ impl Default for ConsoleHandler {
 }
 
 impl Handler for ConsoleHandler {
-    fn handle(&self, record: &Record) -> Result<(), String> {
+    fn handle(&self, record: &Record) -> Result<(), HandlerError> {
         if !self.enabled || record.level() < self.level {
             return Ok(());
         }
@@ -150,12 +148,9 @@ impl Handler for ConsoleHandler {
             .output
             .writer
             .lock()
-            .map_err(|e| format!("Failed to lock writer: {}", e))?;
-        write!(writer, "{}", formatted)
-            .map_err(|e| format!("Failed to write to console: {}", e))?;
-        writer
-            .flush()
-            .map_err(|e| format!("Failed to flush console: {}", e))?;
+            .map_err(|e| HandlerError::Custom(format!("Failed to lock writer: {}", e)))?;
+        write!(writer, "{}", formatted).map_err(HandlerError::IoError)?;
+        writer.flush().map_err(HandlerError::IoError)?;
         Ok(())
     }
 
@@ -191,22 +186,22 @@ impl Handler for ConsoleHandler {
         self.filter.as_ref()
     }
 
-    fn handle_batch(&self, records: &[Record]) -> Result<(), String> {
+    fn handle_batch(&self, records: &[Record]) -> Result<(), HandlerError> {
         for record in records {
             self.handle(record)?;
         }
         Ok(())
     }
 
-    fn init(&mut self) -> Result<(), String> {
+    fn init(&mut self) -> Result<(), HandlerError> {
         Ok(())
     }
 
-    fn flush(&self) -> Result<(), String> {
+    fn flush(&self) -> Result<(), HandlerError> {
         Ok(())
     }
 
-    fn shutdown(&mut self) -> Result<(), String> {
+    fn shutdown(&mut self) -> Result<(), HandlerError> {
         Ok(())
     }
 }
@@ -329,7 +324,8 @@ mod tests {
     #[test]
     fn test_console_handler_metadata() {
         let output = TestOutput::new();
-        let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()));
+        let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()))
+            .with_pattern("{level} - {message} {metadata}");
 
         let mut record = Record::new(
             LogLevel::Info,
@@ -351,8 +347,7 @@ mod tests {
     fn test_console_handler_structured_data() {
         let output = TestOutput::new();
         let handler = ConsoleHandler::with_writer(LogLevel::Info, Box::new(output.clone()))
-            .with_pattern(r#"{{"level":"{level}","message":"{message}","module":"{module}"}}"#)
-            .with_colors(false);
+            .with_formatter(Formatter::json());
 
         let record = Record::new(
             LogLevel::Info,
