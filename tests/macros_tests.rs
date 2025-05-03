@@ -8,6 +8,13 @@ use rust_loguru::{
 use std::sync::Arc;
 
 use rust_loguru::handler::NullHandler;
+use rust_loguru::{
+    critical_scope, profile_scope, resource_scope, scope,
+    scope::{ResourceMetrics, ScopeGuard, ScopeType},
+    scoped_info,
+};
+use std::thread;
+use std::time::Duration;
 
 lazy_static! {
     // This mutex ensures that only one test can initialize the logger at a time
@@ -222,16 +229,87 @@ fn test_set_context_macro() {
 
 #[test]
 fn test_scope_macro() {
-    use rust_loguru::scope;
-    let _guard = scope!("test_scope_macro");
-    // Just check that it compiles and returns a guard
+    let result = scope!("test_scope_macro" => {
+        rust_loguru::info!("Inside scope");
+        42
+    });
+    assert_eq!(result, 42);
 }
 
 #[test]
-fn test_scoped_info_macro() {
-    use rust_loguru::scoped_info;
-    let _scope = scoped_info!("scoped_info_test");
-    // Should log on enter and exit
+fn test_critical_scope_macro() {
+    let result = critical_scope!("critical_test" => {
+        rust_loguru::info!("Inside critical scope");
+        "success"
+    });
+    assert_eq!(result, "success");
+}
+
+#[test]
+fn test_profile_scope_macro() {
+    let result = profile_scope!("profile_test" => {
+        thread::sleep(Duration::from_millis(10));
+        let mut guard = ScopeGuard::enter("inner", ScopeType::Profiling);
+        let mut metrics = ResourceMetrics::default();
+        metrics.cpu_time = Duration::from_millis(100);
+        metrics.memory_usage = 1024;
+        metrics.io_operations = 5;
+        guard.update_metrics(metrics);
+        42
+    });
+    assert_eq!(result, 42);
+}
+
+#[test]
+fn test_resource_scope_macro() {
+    let result = resource_scope!("resource_test" => {
+        let mut guard = ScopeGuard::enter("inner", ScopeType::Resource);
+        let mut metrics = ResourceMetrics::default();
+        metrics.memory_usage = 2048;
+        metrics.io_operations = 10;
+        guard.update_metrics(metrics);
+        "resource tracked"
+    });
+    assert_eq!(result, "resource tracked");
+}
+
+#[test]
+fn test_nested_scope_macros() {
+    let result = scope!("outer" => {
+        let inner_result = scope!("inner" => {
+            rust_loguru::debug!("Inside inner scope");
+            21
+        });
+        inner_result * 2
+    });
+    assert_eq!(result, 42);
+}
+
+#[test]
+fn test_scope_logging() {
+    scope!("logging_test" => {
+        rust_loguru::trace!("Trace message in scope");
+        rust_loguru::debug!("Debug message in scope");
+        rust_loguru::info!("Info message in scope");
+        rust_loguru::error!("Error message in scope");
+    });
+}
+
+#[test]
+#[should_panic(expected = "test panic")]
+fn test_critical_scope_panic() {
+    critical_scope!("critical_panic" => {
+        panic!("test panic");
+    });
+}
+
+#[test]
+fn test_scoped_info() {
+    let result = scoped_info!("scoped_info_test" => {
+        rust_loguru::info!("Inside scoped info");
+        "success"
+    });
+    assert_eq!(result, "success");
 }
 
 #[test]

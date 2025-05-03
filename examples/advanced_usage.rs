@@ -5,23 +5,13 @@ use rust_loguru::handler::new_handler_ref;
 use rust_loguru::level::LogLevel;
 use rust_loguru::logger::Logger;
 use rust_loguru::Record;
-use rust_loguru::ScopeGuard;
+use rust_loguru::{
+    debug, error, info,
+    scope::{ScopeGuard, ScopeType},
+};
 
 use std::thread;
 use std::time::Duration;
-
-fn scopeguard_demo() {
-    let scope = ScopeGuard::enter("outer");
-    println!("[ScopeGuard] Indent level: {}", ScopeGuard::indent_level());
-    thread::sleep(Duration::from_millis(30));
-    {
-        let _inner = ScopeGuard::enter("inner");
-        println!("[ScopeGuard] Indent level: {}", ScopeGuard::indent_level());
-        thread::sleep(Duration::from_millis(10));
-    }
-    println!("[ScopeGuard] Indent level: {}", ScopeGuard::indent_level());
-    println!("[ScopeGuard] Elapsed in outer: {:?}", scope.elapsed());
-}
 
 fn main() {
     // Create console handler
@@ -189,7 +179,61 @@ fn main() {
         None,
     ));
 
-    scopeguard_demo();
+    // Basic scope usage
+    let result = rust_loguru::scope::with_scope("outer", ScopeType::Regular, || {
+        info!("Inside outer scope");
+
+        // Nested scope
+        let inner_result = rust_loguru::scope::with_scope("inner", ScopeType::Regular, || {
+            debug!("Inside inner scope");
+            thread::sleep(Duration::from_millis(100));
+            42
+        });
+
+        inner_result * 2
+    });
+
+    println!("Result: {}", result);
+
+    // Critical scope with error handling
+    let _ = rust_loguru::scope::with_scope("critical_operation", ScopeType::Critical, || {
+        info!("Starting critical operation");
+        if false {
+            // Simulated error condition
+            error!("Critical operation failed");
+            return Err("Operation failed");
+        }
+        Ok(())
+    });
+
+    // Profiling scope
+    let _ = rust_loguru::scope::with_scope("performance_critical", ScopeType::Profiling, || {
+        let mut guard = ScopeGuard::enter("compute", ScopeType::Profiling);
+
+        // Simulate some work
+        thread::sleep(Duration::from_millis(50));
+
+        // Update metrics
+        let mut metrics = rust_loguru::scope::ResourceMetrics::default();
+        metrics.cpu_time = Duration::from_millis(50);
+        metrics.memory_usage = 1024 * 1024; // 1MB
+        metrics.io_operations = 10;
+        guard.update_metrics(metrics);
+    });
+
+    // Resource tracking scope
+    let _ = rust_loguru::scope::with_scope("resource_intensive", ScopeType::Resource, || {
+        let mut guard = ScopeGuard::enter("file_processing", ScopeType::Resource);
+
+        // Simulate file processing
+        thread::sleep(Duration::from_millis(200));
+
+        // Update resource usage
+        let mut metrics = rust_loguru::scope::ResourceMetrics::default();
+        metrics.memory_usage = 2 * 1024 * 1024; // 2MB
+        metrics.io_operations = 100;
+        guard.update_metrics(metrics);
+    });
 }
 
 fn perform_risky_operation() -> Result<(), String> {

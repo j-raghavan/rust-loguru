@@ -314,37 +314,63 @@ macro_rules! context_scope {
 }
 
 // --- Scope Macros ---
-/// Enter a new scope. Returns a guard that times and manages indentation.
-/// Usage: let _scope = scope!("my_scope");
+/// Create a regular scope for timing and indentation.
+/// Usage: scope!("scope_name") { /* code */ }
 #[macro_export]
 macro_rules! scope {
-    ($name:expr) => {
-        $crate::scope::ScopeGuard::enter($name)
+    ($name:expr => $block:block) => {
+        $crate::scope::with_scope($name, $crate::scope::ScopeType::Regular, || $block)
     };
 }
 
-/// Log entering and exiting a scope at INFO level, with timing.
-/// Usage: let _scope = scoped_info!("my_scope");
+/// Create a critical scope with enhanced error handling.
+/// Usage: critical_scope!("scope_name") { /* code */ }
+#[macro_export]
+macro_rules! critical_scope {
+    ($name:expr => $block:block) => {
+        $crate::scope::with_scope($name, $crate::scope::ScopeType::Critical, || $block)
+    };
+}
+
+/// Create a profiling scope with detailed metrics.
+/// Usage: profile_scope!("scope_name") { /* code */ }
+#[macro_export]
+macro_rules! profile_scope {
+    ($name:expr => $block:block) => {
+        $crate::scope::with_scope($name, $crate::scope::ScopeType::Profiling, || $block)
+    };
+}
+
+/// Create a resource tracking scope.
+/// Usage: resource_scope!("scope_name") { /* code */ }
+#[macro_export]
+macro_rules! resource_scope {
+    ($name:expr => $block:block) => {
+        $crate::scope::with_scope($name, $crate::scope::ScopeType::Resource, || $block)
+    };
+}
+
+/// Create a scope with custom type.
+/// Usage: custom_scope!("scope_name", ScopeType::Custom) { /* code */ }
+#[macro_export]
+macro_rules! custom_scope {
+    ($name:expr, $type:expr => $block:block) => {
+        $crate::scope::with_scope($name, $type, || $block)
+    };
+}
+
+/// Create a scope with info level logging.
+/// Usage: scoped_info!("scope_name") { /* code */ }
 #[macro_export]
 macro_rules! scoped_info {
-    ($name:expr) => {{
-        $crate::info!("Entering scope: {}", $name);
-        let _guard = $crate::scope::ScopeGuard::enter($name);
-        struct ScopeLogger<'a> {
-            name: &'a str,
-            start: ::std::time::Instant,
-        }
-        impl<'a> ::std::ops::Drop for ScopeLogger<'a> {
-            fn drop(&mut self) {
-                let elapsed = self.start.elapsed();
-                $crate::info!("Exiting scope: {} (elapsed: {:?})", self.name, elapsed);
-            }
-        }
-        ScopeLogger {
-            name: $name,
-            start: ::std::time::Instant::now(),
-        }
-    }};
+    ($name:expr => $block:block) => {
+        $crate::scope::with_scope($name, $crate::scope::ScopeType::Regular, || {
+            $crate::info!("Entering scope: {}", $name);
+            let result = $block;
+            $crate::info!("Exiting scope: {}", $name);
+            result
+        })
+    };
 }
 
 // --- Error Integration Macros ---
