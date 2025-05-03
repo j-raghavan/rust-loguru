@@ -72,13 +72,63 @@ fn test_async_context_propagation() {
         ContextValue::String("abc123".to_string()),
     );
     push_context(ctx);
-    let arc_ctx = propagate_context_for_async();
+    let snapshot = create_context_snapshot();
     pop_context();
     // Simulate async context restoration
-    set_context_from_arc(arc_ctx.clone());
+    restore_context(&snapshot);
     assert_eq!(
         get_context_value("trace_id"),
         Some(ContextValue::String("abc123".to_string()))
     );
     pop_context();
+}
+
+#[test]
+fn test_global_context() {
+    set_global_context_value("app_id", ContextValue::String("test-app".to_string()));
+    assert_eq!(
+        get_global_context_value("app_id"),
+        Some(ContextValue::String("test-app".to_string()))
+    );
+}
+
+#[test]
+fn test_context_scope() {
+    {
+        let _scope = create_context_scope();
+        set_context_value("request_id", ContextValue::String("123".to_string()));
+        assert_eq!(
+            get_context_value("request_id"),
+            Some(ContextValue::String("123".to_string()))
+        );
+    }
+    // Context should be automatically cleared after scope ends
+    assert_eq!(get_context_value("request_id"), None);
+}
+
+#[test]
+fn test_nested_context_scopes() {
+    {
+        let _scope1 = create_context_scope();
+        set_context_value("outer", ContextValue::String("outer_value".to_string()));
+        {
+            let _scope2 = create_context_scope();
+            set_context_value("inner", ContextValue::String("inner_value".to_string()));
+            assert_eq!(
+                get_context_value("outer"),
+                Some(ContextValue::String("outer_value".to_string()))
+            );
+            assert_eq!(
+                get_context_value("inner"),
+                Some(ContextValue::String("inner_value".to_string()))
+            );
+        }
+        assert_eq!(
+            get_context_value("outer"),
+            Some(ContextValue::String("outer_value".to_string()))
+        );
+        assert_eq!(get_context_value("inner"), None);
+    }
+    assert_eq!(get_context_value("outer"), None);
+    assert_eq!(get_context_value("inner"), None);
 }
