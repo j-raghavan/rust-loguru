@@ -13,47 +13,70 @@ fn main() {
     logger.add_handler(handler);
     rust_loguru::init(logger);
 
-    // Add context for the current thread (e.g., user ID)
-    let mut ctx = context::ContextMap::new();
-    ctx.insert(
-        "user_id".to_string(),
-        context::ContextValue::String("alice".to_string()),
+    // Set global context for the application
+    context::set_global_context_value(
+        "app_name",
+        context::ContextValue::String("example-app".to_string()),
     );
-    context::push_context(ctx);
 
-    // Log a message; context will be attached if integrated into Record/formatters
-    info!("User logged in");
+    // Use context scope for automatic cleanup
+    {
+        let _scope = context::create_context_scope();
+        context::set_context_value(
+            "user_id",
+            context::ContextValue::String("alice".to_string()),
+        );
 
-    // Add more context (e.g., request ID) in a nested scope
-    let mut req_ctx = context::ContextMap::new();
-    req_ctx.insert(
-        "request_id".to_string(),
-        context::ContextValue::String("req-123".to_string()),
-    );
-    context::push_context(req_ctx);
+        // Log a message; context will be attached if integrated into Record/formatters
+        info!("User logged in");
 
-    debug!("Processing request");
+        // Nested context scope for request handling
+        {
+            let _req_scope = context::create_context_scope();
+            context::set_context_value(
+                "request_id",
+                context::ContextValue::String("req-123".to_string()),
+            );
 
-    // Pop request context when done
-    context::pop_context();
-
-    // Pop user context at the end
-    context::pop_context();
+            debug!("Processing request");
+        } // request context is automatically cleared here
+    } // user context is automatically cleared here
 
     // --- Async context propagation example ---
-    let mut ctx = context::ContextMap::new();
-    ctx.insert(
-        "trace_id".to_string(),
-        context::ContextValue::String("abc123".to_string()),
-    );
-    context::push_context(ctx);
-    let arc_ctx = context::propagate_context_for_async();
+    {
+        let _scope = context::create_context_scope();
+        context::set_context_value(
+            "trace_id",
+            context::ContextValue::String("abc123".to_string()),
+        );
+        let snapshot = context::create_context_snapshot();
 
-    let handle = thread::spawn(move || {
-        context::set_context_from_arc(arc_ctx);
-        info!("Logging from another thread with propagated context");
-        context::pop_context();
-    });
-    handle.join().unwrap();
-    context::pop_context();
+        let handle = thread::spawn(move || {
+            let _scope = context::create_context_scope();
+            context::restore_context(&snapshot);
+            info!("Logging from another thread with propagated context");
+        });
+        handle.join().unwrap();
+    }
+
+    // Demonstrate complex context values
+    {
+        let _scope = context::create_context_scope();
+        let mut user_data = context::ContextMap::new();
+        user_data.insert(
+            "name".to_string(),
+            context::ContextValue::String("alice".to_string()),
+        );
+        user_data.insert("age".to_string(), context::ContextValue::Integer(30));
+        user_data.insert(
+            "roles".to_string(),
+            context::ContextValue::Array(vec![
+                context::ContextValue::String("admin".to_string()),
+                context::ContextValue::String("user".to_string()),
+            ]),
+        );
+
+        context::set_context_value("user", context::ContextValue::Map(user_data));
+        info!("User data attached to context");
+    }
 }

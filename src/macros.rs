@@ -236,6 +236,83 @@ macro_rules! get_context {
     };
 }
 
+/// Create a new context scope with automatic cleanup.
+/// Usage: with_context! { "key" => "value" => { /* code */ } }
+#[macro_export]
+macro_rules! with_context {
+    ( $( $key:expr => $val:expr ),* $(,)? => $block:block ) => {
+        {
+            let _guard = $crate::context::create_context_scope();
+            $(
+                $crate::context::set_context_value(
+                    $key,
+                    $crate::context::ContextValue::String($val.to_string()),
+                );
+            )*
+            $block
+        }
+    };
+}
+
+/// Create a new async context scope.
+/// Usage: async_with_context! { "key" => "value" => async { /* code */ } }
+#[macro_export]
+macro_rules! async_with_context {
+    ( $( $key:expr => $val:expr ),* $(,)? => $block:block ) => {
+        {
+            let snapshot = $crate::context::create_context_snapshot();
+            $(
+                $crate::context::set_context_value(
+                    $key,
+                    $crate::context::ContextValue::String($val.to_string()),
+                );
+            )*
+            async move {
+                let _guard = $crate::context::create_context_scope();
+                $crate::context::restore_context(&snapshot);
+                $block
+            }
+        }
+    };
+}
+
+/// Set a value in the global context.
+#[macro_export]
+macro_rules! set_global_context {
+    ($key:expr, $val:expr) => {
+        $crate::context::set_global_context_value(
+            $key,
+            $crate::context::ContextValue::String($val.to_string()),
+        );
+    };
+}
+
+/// Get a value from the global context.
+#[macro_export]
+macro_rules! get_global_context {
+    ($key:expr) => {
+        $crate::context::get_global_context_value($key)
+    };
+}
+
+/// Create a new context scope with automatic cleanup and return value.
+/// Usage: let result = context_scope! { "key" => "value" => { /* code */ } }
+#[macro_export]
+macro_rules! context_scope {
+    ( $( $key:expr => $val:expr ),* $(,)? => $block:block ) => {
+        {
+            let _guard = $crate::context::create_context_scope();
+            $(
+                $crate::context::set_context_value(
+                    $key,
+                    $crate::context::ContextValue::String($val.to_string()),
+                );
+            )*
+            $block
+        }
+    };
+}
+
 // --- Scope Macros ---
 /// Enter a new scope. Returns a guard that times and manages indentation.
 /// Usage: let _scope = scope!("my_scope");

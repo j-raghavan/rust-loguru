@@ -453,6 +453,17 @@ fn context_value_to_json(val: context::ContextValue) -> serde_json::Value {
             None => serde_json::Value::Null,
         },
         context::ContextValue::Bool(b) => serde_json::Value::Bool(b),
+        context::ContextValue::Map(m) => {
+            let mut obj = serde_json::Map::new();
+            for (k, v) in m {
+                obj.insert(k, context_value_to_json(v));
+            }
+            serde_json::Value::Object(obj)
+        }
+        context::ContextValue::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(context_value_to_json).collect())
+        }
+        context::ContextValue::Null => serde_json::Value::Null,
     }
 }
 
