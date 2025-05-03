@@ -34,50 +34,18 @@ rust-loguru = "0.1.15" # Or Newer version
 <!-- Basic Logging -->
 ![Basic Logging Benchmark](images/basic_logging.png)
 
-- **Dominant Speed**: The **slog** implementation is effectively a no-op here, with means around 3 ns across all levels and counts.
-- **Loguru vs. slog**: Loguru is roughly **5,700 – 6,200%** slower than slog (e.g. at DEBUG_10, 5,712% slower), reflecting slog’s specialized zero-overhead design.
-- **Loguru vs. log crate**: Loguru is **57 – 84% faster** than the standard `log` crate (e.g. at DEBUG_1000, Loguru is ~84% faster).
-- **Loguru vs. tracing**: Loguru outperforms `tracing` by **~69–70%** at all levels (e.g. at INFO_100, ~69.6% faster).
-  
-  This means Loguru strikes a solid mid-ground: much lighter than the typical facade/structured crates, though still not as zero-cost as slog’s static no-op.
-
----
-
-### Structured Logging (INFO-level with 5, 20, 50 key/value fields)
-<!-- Structured Logging -->
-![Structured Logging Benchmark](images/structured_logging_benchmark.png)
-
-- **Overall Trend**: As field count increases, all implementations pay more cost, but differences widen.
-- **At 5 Fields**  
-  - Loguru is slightly slower than `slog` but **~13% faster** than `tracing`. Note that `log` shows deceptively low times here but doesn't provide the same structured logging capabilities.
-- **At 20 Fields**  
-  - Loguru shows significant improvement: **~14% faster** than `tracing` and **~19% faster** than `slog`.
-- **At 50 Fields**  
-  - Loguru demonstrates excellent scaling, outperforming `tracing` by **~31%** and `slog` by **~27%**.
-
-Loguru's design shows excellent scaling in structured scenarios—its performance cost grows less steeply than competitors as field count increases, making it particularly efficient for complex, data-rich logging.ign shows excellent scaling in the structured scenario—its median cost grows less steeply than the others.
-
 ---
 
 ### Concurrent Logging (INFO-level with 2, 4, 8, 16 threads)
 <!-- Concurrent Logging -->
 ![Concurrent Logging Benchmark](images/concurrent_logging.png)
 
-- **Up to 8 Threads**: Loguru stays within **20–40%** faster than `log` and **10–30%** faster than `tracing`, though it trails **slog** by **~100–200%** (i.e., slog is up to twice as fast).
-- **At 16 Threads**:  
-  - Loguru’s relative efficiency dips slightly versus `log` (~17% faster) and versus `tracing` (~15% faster), while slog still leads (~104% advantage).
-
-  Under concurrency, Loguru maintains solid multi-threaded performance, though the no-lock nature of slog gives it an edge at high thread counts.
 
 ---
 <!-- High-Volume Logging -->
 ### High-Volume Logging (bulk emit of 100, 1 000, 10 000 messages)
 ![High-Volume Logging Benchmark](images/high_volume_logging.png)
 
-- **Consistency**: Across 100→10 000 message runs, Loguru is **~40–60% faster** than `log`, and **~20–35%** faster than `tracing`.
-- **Compared to slog**: slog remains the fastest (by ~300–500%), but Loguru maintains clear separation from the middle pack.
-
-  For large bursts, Loguru’s buffering/emit path handles scale very well—roughly halving the cost of the standard facade or tracing.
 
 ---
 
@@ -85,19 +53,34 @@ Loguru's design shows excellent scaling in structured scenarios—its performanc
 ### File-Rotation (write and rotate files)
 ![File Rotation Benchmark](images/file_rotation.png)
 
-- **Single Scenario**:  
-  - **Logged to Polled File** (our custom file_rotation) — mean: ~3 890 ns
-  - **log4rs** — ~5 120 ns  (Loguru is 24% faster than log4rs)
-  - **Loguru** — ~3 890 ns  
-  - **slog** — ~5 670 ns  (Loguru is 31% faster than slog)  
-  - **tracing** — ~6 430 ns (Loguru is 39% faster than tracing)
-
-  Loguru gives the best file-rotation performance of the group (about **24–39%** faster than the nearest rivals).
 
 ---
 
-### **Bottom Line:**  
-Across benchmark categories, **rust-loguru** shows varying performance characteristics: it consistently outperforms the `tracing` crate (by **~13-31%** in structured logging scenarios), and shows increasingly better performance compared to `slog` as complexity grows (from slightly slower at 5 fields to **~27%** faster at 50 fields). While the standard `log` crate shows lower times, it lacks the structured capabilities of the other libraries. For file rotation, rust-loguru is promising than alternatives.
+### **Key Findings:**  
+
+1. Standard Logging Performance:
+
+    - slog shows exceptional performance for most standard operations (3-6 ns)
+    - loguru consistently performs well (160-180 ns), significantly faster than log and tracing
+    - log and tracing show higher execution times (400-650 ns)
+
+
+2. Concurrent Logging:
+
+    - All libraries show scaling patterns with more threads, but slog maintains the best performance
+    - loguru shows excellent multithreading efficiency, ranking 2nd consistently
+
+3. File Rotation:
+
+    - slog is fastest at 7.08ms
+    - tracing follows at 16.65ms
+    - log4rs at 32.73ms
+    - loguru is slowest at 48.05ms
+
+4. High Volume Logging:
+
+    - For very high volumes (10,000 elements), slog maintains exceptional performance
+    - loguru handles large volumes significantly better than both log and tracing
 
 
 
