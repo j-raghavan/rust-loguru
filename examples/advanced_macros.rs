@@ -4,11 +4,15 @@
 use parking_lot::RwLock;
 use rust_loguru::handler::console::ConsoleHandler;
 use rust_loguru::{
-    critical, debug, error, get_context, info, info_kv, init, log_error, log_error_with_context,
-    log_if_enabled, pop_context, push_context, scope, scoped_info, set_context, success, trace,
-    try_log, warn, LogLevel, Logger,
+    critical, critical_scope, debug, error, get_context, info, info_kv, init, log_error,
+    log_error_with_context, log_if_enabled, pop_context, profile_scope, push_context,
+    resource_scope, scope,
+    scope::{ScopeGuard, ScopeType},
+    scoped_info, set_context, success, trace, try_log, warn, LogLevel, Logger,
 };
 use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 fn main() {
     // Setup logger
@@ -27,14 +31,59 @@ fn main() {
     pop_context!();
 
     // --- Scope Macros ---
-    {
-        let _guard = scope!("outer_scope");
-        debug!("Inside outer scope");
-        {
-            let _scope = scoped_info!("inner_scope");
-            success!("Doing some work in the inner scope");
+    let result = scope!("outer_scope" => {
+        info!("Inside outer scope");
+
+        // Nested scope
+        let inner_result = scope!("inner_scope" => {
+            debug!("Inside inner scope");
+            thread::sleep(Duration::from_millis(100));
+            42
+        });
+
+        inner_result * 2
+    });
+
+    println!("Result: {}", result);
+
+    // Critical scope with error handling
+    let _ = critical_scope!("critical_operation" => {
+        info!("Starting critical operation");
+        if false { // Simulated error condition
+            error!("Critical operation failed");
+            return Err("Operation failed");
         }
-    }
+        Ok(())
+    });
+
+    // Profiling scope
+    let _ = profile_scope!("performance_critical" => {
+        let mut guard = ScopeGuard::enter("compute", ScopeType::Profiling);
+
+        // Simulate some work
+        thread::sleep(Duration::from_millis(50));
+
+        // Update metrics
+        let mut metrics = rust_loguru::scope::ResourceMetrics::default();
+        metrics.cpu_time = Duration::from_millis(50);
+        metrics.memory_usage = 1024 * 1024; // 1MB
+        metrics.io_operations = 10;
+        guard.update_metrics(metrics);
+    });
+
+    // Resource tracking scope
+    let _ = resource_scope!("resource_intensive" => {
+        let mut guard = ScopeGuard::enter("file_processing", ScopeType::Resource);
+
+        // Simulate file processing
+        thread::sleep(Duration::from_millis(200));
+
+        // Update resource usage
+        let mut metrics = rust_loguru::scope::ResourceMetrics::default();
+        metrics.memory_usage = 2 * 1024 * 1024; // 2MB
+        metrics.io_operations = 100;
+        guard.update_metrics(metrics);
+    });
 
     // --- Error Integration Macros ---
     let err = "something went wrong";
